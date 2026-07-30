@@ -1,0 +1,17 @@
+# ─── SECURITY — never commit these ─────────────────────────────────────────────
+.env
+.env.local
+data/.browser-profile/
+
+# ─── Private business data ─────────────────────────────────────────────────────
+# Path configs carry manufacturer/packer addresses, MRPs and selling prices.
+# Used SKUs reveal listing volume. Front View images are the seller's product
+# photos. All of it stays local.
+data/paths/
+data/used_skus.json
+# ephemeral per-run Front View uploads
+data/runs/
+
+# ─── Build output ──────────────────────────────────────────────────────────────
+node_modules/
+dist/
