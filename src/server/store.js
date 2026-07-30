@@ -81,6 +81,20 @@ export async function sharedImagePaths(id) {
   });
 }
 
+/**
+ * Flatten a path's shared defaults and one variant's overrides into a single
+ * object. Nested groups are merged rather than replaced so a variant can override
+ * just the package height without restating the whole group.
+ */
+export function resolveVariant(path, variant) {
+  return {
+    ...path.shared,
+    ...variant,
+    package: { ...(path.shared.package || {}), ...(variant.package || {}) },
+    sizeInches: { ...(path.shared.sizeInches || {}), ...(variant.sizeInches || {}) },
+  };
+}
+
 // ─── SKUs ──────────────────────────────────────────────────────────────────────
 
 /**

@@ -2,8 +2,9 @@ import express from 'express';
 import multer from 'multer';
 import fs from 'fs/promises';
 import path from 'path';
-import { listPaths, getPath, savePath, deletePath, sharedImagesDir } from '../store.js';
+import { listPaths, getPath, savePath, deletePath, sharedImagesDir, resolveVariant } from '../store.js';
 import { ensureMinSize } from '../../images/normalize.js';
+import { generateCopy } from '../../ai/content.js';
 import { broadcast } from '../index.js';
 
 const router = express.Router();
@@ -27,6 +28,45 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   await deletePath(req.params.id);
   res.json({ ok: true });
+});
+
+// ─── POST /:id/copy — generate the copy once and store it on the path ─────────
+// WHY store it: regenerating every run costs an AI call per variant, makes a
+// Gemini outage or quota limit able to block a listing, and means two listings of
+// the same product go out with different words. Generate deliberately, review it,
+// then every run just reads it back.
+//
+// Body: { variantKey?: string, force?: boolean }
+//   variantKey — regenerate just one variant, otherwise all of them
+//   force      — overwrite copy that already exists (default: skip those)
+router.post('/:id/copy', async (req, res) => {
+  try {
+    const config = await getPath(req.params.id);
+    if (!config) return res.status(404).json({ error: 'Path not found.' });
+
+    const { variantKey, force = false } = req.body || {};
+    const log = (text) => broadcast({ type: 'info', text });
+    const written = [];
+
+    for (const variant of config.variants) {
+      if (variantKey && variant.key !== variantKey) continue;
+      if (variant.copy && !force) continue;
+      const resolved = resolveVariant(config, variant);
+      variant.copy = await generateCopy(config, resolved, log);
+      written.push(variant.key);
+    }
+
+    if (!written.length) {
+      return res.json({ ...config, _note: 'Copy already exists. Pass force to regenerate.' });
+    }
+
+    const saved = await savePath(req.params.id, config);
+    broadcast({ type: 'success', text: `Copy saved for: ${written.join(', ')}` });
+    res.json(saved);
+  } catch (err) {
+    broadcast({ type: 'error', text: err.message });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ─── Shared images (slots 2–5) ────────────────────────────────────────────────

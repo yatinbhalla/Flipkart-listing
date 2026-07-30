@@ -3,12 +3,14 @@ import { useWebSocket } from './hooks/useWebSocket.js';
 import LiveLog from './components/LiveLog.jsx';
 import SharedImages from './components/SharedImages.jsx';
 import RunPanel from './components/RunPanel.jsx';
+import CopyPanel from './components/CopyPanel.jsx';
 
 export default function App() {
   const { lines, events, clear } = useWebSocket();
   const [paths, setPaths] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState({ total: 0, completed: 0, ok: 0, failed: 0 });
 
   useEffect(() => { refresh(); }, []);
 
@@ -17,6 +19,23 @@ export default function App() {
   useEffect(() => {
     if (events['run-finished']) setRunning(false);
   }, [events['run-finished']]);
+
+  useEffect(() => {
+    const start = events['batch-start'];
+    if (start) setProgress({ total: start.total, completed: 0, ok: 0, failed: 0 });
+  }, [events['batch-start']]);
+
+  // Each item-done tick advances the bar; a failed listing does not stop the batch.
+  useEffect(() => {
+    const item = events['item-done'];
+    if (!item) return;
+    setProgress((p) => ({
+      ...p,
+      completed: p.completed + 1,
+      ok: p.ok + (item.ok ? 1 : 0),
+      failed: p.failed + (item.ok ? 0 : 1),
+    }));
+  }, [events['item-done']]);
 
   async function refresh() {
     const res = await fetch('/api/paths');
@@ -63,7 +82,20 @@ export default function App() {
               </p>
             </div>
 
-            <RunPanel path={selected} running={running} onStarted={() => setRunning(true)} />
+            <CopyPanel
+              path={selected}
+              running={running}
+              onSaved={(updated) =>
+                setPaths((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
+              }
+            />
+
+            <RunPanel
+              path={selected}
+              running={running}
+              progress={progress}
+              onStarted={() => setRunning(true)}
+            />
           </div>
 
           <aside className="space-y-4">

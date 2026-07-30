@@ -66,7 +66,9 @@
 - 🧭 **Whole-form automation.** Vertical → brand check → 5 images → Price/Stock → Product Description → Additional Description → variant matrix → QC. Not a recorded click-track — a purpose-built driver that knows what each tab means.
 - 🖼️ **One image in, five out.** The seller supplies only the Front View. Slots 2–5 are uploaded once per path and reused for every listing on it.
 - 🧬 **Variant-aware image prompting.** Seating-Capacity variants reuse the parent's photos; Colour and Pack-of variants are detected and prompted for their own front image.
-- 📐 **Per-variant copy.** A 60×90 six-seater gets its own description, keywords and features sized to it — never a copy-paste of the 40×60.
+- 📐 **Per-variant copy, written once.** A 60×90 six-seater gets its own description, keywords and features sized to it — never a copy-paste of the 40×60. Generated deliberately, stored on the path, then reused: **a run makes zero AI calls**, so a quota limit or Gemini outage can never block a listing and two listings of the same product never go out with different words.
+- 📋 **Specs are rule-based, not written.** The specification block is derived from the variant's own field values, so it can never drift from the dropdowns actually submitted to Flipkart.
+- 📦 **Batch up to 50.** Select up to 50 Front View images and each becomes its own listing with its own SKU, run back-to-back in one browser session. A failure on listing 12 doesn't abandon 13–50.
 - 🚫 **Brand-name scrubbing.** Flipkart QC rejects brand mentions in description and keyword fields, so brand words are forbidden in the prompt *and* stripped from the output afterwards.
 - 🆔 **Collision-free SKUs.** Pattern-based (`TC_BT/{X}`, `TC_60*90_BT/{X}`) with a persistent ledger. Model Number mirrors the SKU; Model Name stays the keyword-rich title.
 - 📏 **Resolution guard.** Flipkart states a 1100×1100 minimum but does not enforce it — a 1080×1080 file sailed through the manual run and only becomes a problem at QC. Every upload is measured and anything undersized is upscaled to 1200×1200 with Lanczos3, which holds type edges on flat brand graphics.
@@ -106,9 +108,9 @@ Flipkart-listing/
 │   │   ├── store.js                  Path persistence + SKU dedup ledger
 │   │   ├── seed.js                   The Table Cover path, transcribed from the verified manual listing
 │   │   └── 📁 routes/
-│   │       ├── paths.js              CRUD + shared-image (slots 2–5) upload
-│   │       ├── run.js                Resolve SKUs → AI copy → drive the form → verify → QC
-│   │       └── uploads.js            Per-run Front View images
+│   │       ├── paths.js              CRUD + shared-image upload + generate/store copy
+│   │       ├── run.js                Batch loop — SKUs → stored copy → drive the form → verify → QC
+│   │       └── uploads.js            Per-run Front View images (1–50)
 │   │
 │   ├── 📁 browser/                   Playwright agents (run in Node)
 │   │   ├── session.js                Persistent profile, manual-first login
@@ -118,14 +120,14 @@ Flipkart-listing/
 │   │
 │   ├── 📁 ai/                        Gemini integration
 │   │   ├── client.js                 Shared call wrapper · model fallback · JSON mode
-│   │   └── content.js                Per-variant description / keywords / features · brand scrubbing
+│   │   └── content.js                Per-variant copy (stored on the path) · rule-based specs · brand scrubbing
 │   │
 │   ├── 📁 images/
 │   │   └── normalize.js              Resolution guard — upscales anything below Flipkart's 1100px minimum
 │   │
 │   └── 📁 client/                    React 18 + Vite + Tailwind (port 5174)
 │       ├── App.jsx                   Path selector + layout + tab-status panel
-│       ├── 📁 components/            RunPanel, SharedImages, LiveLog
+│       ├── 📁 components/            RunPanel, CopyPanel, SharedImages, LiveLog
 │       └── 📁 hooks/                 useWebSocket (auto-reconnect)
 │
 ├── 📁 content/                       Reference notes from the manual listing
@@ -246,18 +248,29 @@ Single-screen app — everything the daily workflow needs is on one view.
 
 ## 🤖 AI Copywriting
 
-One Gemini call **per variant**, routed through the shared client.
+Copy is generated **once per variant and stored on the path** (`variant.copy` in
+`config.json`). Runs read it back, so a listing — or a batch of fifty — makes **no
+AI calls at all**.
 
 ```
-generateCopy(path, variant) →
-   Single Gemini call · responseMimeType: 'application/json'
-   Returns: { description, searchKeywords[], keyFeatures[], modelName }
+POST /api/paths/:id/copy   { variantKey?, force? }  →  generates and saves
+POST /api/run              →  reads variant.copy, refuses if it is missing
 ```
 
-- **Per variant, not per path.** The prompt carries that variant's size and seating capacity, so a 60×90 six-seater listing reads differently from the 40×60 and carries its own size keywords.
-- **SEO + GEO shaped.** Plain factual sentences that answer what a buyer actually asks — what it protects against, who it's for, how to clean it — plus a short spec list. No hyperbole, no invented certifications.
-- **Brand scrubbing runs twice.** Brand names are forbidden in the prompt, then stripped from the returned text with a word-boundary regex covering the seller's own brand and every marketplace name. Flipkart QC rejects brand mentions in these fields, and a prompt instruction alone is not a guarantee.
-- **Fails loudly.** Incomplete output raises rather than silently listing a product with an empty description.
+- **Why store it.** Regenerating every run costs a call per variant, lets a quota
+  limit or an outage block a listing, and means two listings of the same product go
+  out with different words. Generate deliberately, read it, then reuse it.
+- **Per variant, not per path.** The prompt carries that variant's size and seating
+  capacity, so the 60×90 six-seater carries its own size keywords.
+- **Specs are derived, not written.** `buildSpecs()` builds the specification block
+  from the variant's own field values and appends it to the description. An
+  AI-written spec list can drift from the dropdown values actually submitted; a
+  derived one cannot. Gemini is explicitly told not to write one.
+- **Brand scrubbing runs twice.** Brand names are forbidden in the prompt, then
+  stripped from the returned text with a word-boundary regex covering the seller's
+  own brand and every marketplace name. Flipkart QC rejects brand mentions in these
+  fields, and a prompt instruction alone is not a guarantee.
+- **Fails loudly.** Incomplete output raises rather than saving an empty description.
 
 ### Shared client (`src/ai/client.js`)
 
@@ -317,36 +330,37 @@ Vertical · brand · SKU pattern · shared field values · variant list
       ↓
 Upload slots 2–5 once  →  POST /api/paths/:id/images
       ↓
+Generate the copy once →  POST /api/paths/:id/copy
+      ↓
 Path shows "ready" in the UI
 ```
 
-### Running a listing (daily use)
+### Running listings (daily use)
 
 ```
-Attach Front View per variant that needs one → POST /api/uploads/front
+Select 1–50 Front View images → POST /api/uploads/front
+   • each measured, anything under 1100px upscaled to 1200px
       ↓
 Preview  →  POST /api/run/preview
-      • Allocate a unique SKU per variant (Model Number mirrors it)
-      • Gemini writes description / keywords / features per variant
-      • Nothing has touched Flipkart yet — read it, then decide
+   • allocates a rule-based SKU per variant (Model Number mirrors it)
+   • reads the stored copy — no AI call, no browser
       ↓
-Run  →  POST /api/run  (returns immediately; progress over WS)
+Run  →  POST /api/run   (returns immediately; progress over WS)
       ↓
 Chromium opens / reuses session → already signed in
       ↓
-selectVertical → selectBrand → 5 images in order
+for each Front View image:
+   • fresh SKUs allocated for this listing
+   • selectVertical → selectBrand → 5 images in order
+   • Price/Stock → Product Description → Additional Description
+        (each tab switch saves the previous one)
+   • for each extra variant: addVariant on its axis, fill its matrix row
+   • save the matrix, re-read every row, repair anything Flipkart dropped
+   • verifyReady() → broadcast tab statuses
+   • sendToQc off → leave a validated draft ;  on → submit and confirm the banner
+   • a failure here is logged and the batch continues with the next image
       ↓
-Price/Stock  →  Product Description  →  Additional Description
-   (each tab switch saves the previous one)
-      ↓
-For each extra variant: addVariant on its axis, fill its matrix row
-      ↓
-Save the matrix, re-read every row, repair anything Flipkart dropped
-      ↓
-verifyReady()  →  broadcast tab statuses
-      ↓
-   sendToQc off  →  stop on a validated draft, browser stays open
-   sendToQc on   →  click Send to QC, confirm the success banner
+broadcast run-finished { done: [skus], failed: [{ index, error }] }
 ```
 
 ---
@@ -357,6 +371,7 @@ verifyReady()  →  broadcast tab statuses
 |---|---|---|
 | **Replay not yet run live** | The form mechanics were validated by driving a real listing to QC by hand, but the Playwright executor has not yet completed an unattended end-to-end run against Flipkart. | Run the first one with *Send to QC* off and watch it. Every step is logged over WS. |
 | **Per-variant image upload** | Colour / Pack-of variants have their own image strip on the Variant tab. The run collects and validates those images but currently uploads only the parent's. | Seating-Capacity paths are unaffected. Wiring the variant strip is the next task on the roadmap. |
+| **Batching excludes image-bearing variants** | A Colour / Pack-of variant needs a photo that cannot vary across a batch, so paths with one are limited to a single listing per run. | Enforced server-side with a clear message rather than silently reusing one photo for every listing. |
 | **One vertical proven** | Only Table Cover has been driven end to end. Other verticals have different mandatory attributes on the Product Description tab. | The field primitives are generic; `listing.js` names Table Cover's fields explicitly and would need a per-vertical map. |
 | **No path editor in the UI** | Paths are edited as JSON on disk or via the API. | Roadmap — the Meesho lister's PathConfig screen is the model. |
 | **Selector fragility** | Image-slot clicking and the form panel rely on class-prefix selectors from Flipkart's styled-components build, which change on redeploys. | Label-based addressing covers most of the form; the class-prefix selectors are isolated to a handful of constants at the top of `form.js`. |
@@ -371,7 +386,6 @@ verifyReady()  →  broadcast tab statuses
 - [ ] **Per-variant image upload** — drive the Variant tab's own image strip for Colour and Pack-of variants.
 - [ ] **Per-vertical field maps** — declare each vertical's mandatory attributes as data so new categories don't need code.
 - [ ] **In-app path editor** — create and edit paths without touching JSON.
-- [ ] **Bulk mode** — N front images → N listings in one session, sharing the browser and the shared-image uploads.
 - [ ] **QC outcome tracking** — poll Listings-in-Progress and surface rejections against the listing that caused them.
 - [ ] **AI-assisted selector recovery** — port the Meesho lister's self-healing navigator so class-prefix changes heal themselves.
 - [ ] **MCP server wrapper** — expose run/preview as MCP tools so an agent can drive listings directly.
