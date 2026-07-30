@@ -2,6 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import fs from 'fs/promises';
 import path from 'path';
+import { ensureMinSize } from '../../images/normalize.js';
 
 const router = express.Router();
 const RUN_UPLOADS = path.resolve('data/runs');
@@ -26,9 +27,21 @@ const upload = multer({
       : cb(new Error('Only JPG, PNG and WebP images are allowed.')),
 });
 
-router.post('/front', upload.single('image'), (req, res) => {
+router.post('/front', upload.single('image'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No image uploaded.' });
-  res.json({ path: path.resolve(req.file.path), name: req.file.originalname });
+  try {
+    const file = path.resolve(req.file.path);
+    const sized = await ensureMinSize(file);
+    res.json({
+      path: file,
+      name: req.file.originalname,
+      width: sized.to[0],
+      height: sized.to[1],
+      upscaled: sized.changed,
+    });
+  } catch (err) {
+    res.status(400).json({ error: `Could not process that image: ${err.message}` });
+  }
 });
 
 export default router;

@@ -3,6 +3,8 @@ import multer from 'multer';
 import fs from 'fs/promises';
 import path from 'path';
 import { listPaths, getPath, savePath, deletePath, sharedImagesDir } from '../store.js';
+import { ensureMinSize } from '../../images/normalize.js';
+import { broadcast } from '../index.js';
 
 const router = express.Router();
 
@@ -65,7 +67,18 @@ router.post(
         for (const existing of await fs.readdir(dir)) {
           if (existing.startsWith(slot + '.')) await fs.rm(path.join(dir, existing), { force: true });
         }
-        await fs.rename(file.path, path.join(dir, `${slot}${ext}`));
+        const dest = path.join(dir, `${slot}${ext}`);
+        await fs.rename(file.path, dest);
+
+        // Undersized images are a QC-rejection risk and the upload widget does not
+        // catch them, so fix them here rather than discovering it after submission.
+        const sized = await ensureMinSize(dest);
+        if (sized.changed) {
+          broadcast({
+            type: 'info',
+            text: `${slot}: upscaled ${sized.from.join('×')} → ${sized.to.join('×')} to clear the ${1100}px minimum.`,
+          });
+        }
       }
       res.json(await getPath(req.params.id));
     } catch (err) {

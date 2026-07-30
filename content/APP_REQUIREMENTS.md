@@ -12,6 +12,10 @@
 - **Images 2–5 stay the same across listings** — they are reusable/common assets.
 - **The user supplies only the 1st image (Front View)**, and that is what kicks off a listing.
 - Slots must be filled one at a time; slot N+1 can only be uploaded after slot N finishes.
+- **Minimum 1100x1100 px, and Flipkart does NOT enforce it.** The Package View
+  (`5.png`) was 1080x1080 and the widget accepted it silently — that only surfaces as
+  a QC rejection later. The app now measures every upload and upscales anything
+  undersized to 1200x1200 (Lanczos3), so this cannot slip through again.
 
 ## Variants
 - Variant axes offered by the Table Cover vertical: **Color**, **Pack of**, **Seating Capacity**.

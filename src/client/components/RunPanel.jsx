@@ -98,7 +98,13 @@ export default function RunPanel({ path, running, onStarted }) {
                       className="text-xs file:mr-2 file:rounded file:border-0 file:bg-slate-100 file:px-2 file:py-1"
                     />
                     {fronts[variant.key] && (
-                      <span className="text-xs text-emerald-600">✓ {fronts[variant.key].name}</span>
+                      <span className="text-xs text-emerald-600">
+                        ✓ {fronts[variant.key].name}
+                        <span className="ml-1 text-slate-400">
+                          {fronts[variant.key].width}×{fronts[variant.key].height}
+                          {fronts[variant.key].upscaled && ' (upscaled)'}
+                        </span>
+                      </span>
                     )}
                   </div>
                 ) : (

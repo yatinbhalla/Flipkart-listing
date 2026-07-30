@@ -69,6 +69,7 @@
 - 📐 **Per-variant copy.** A 60×90 six-seater gets its own description, keywords and features sized to it — never a copy-paste of the 40×60.
 - 🚫 **Brand-name scrubbing.** Flipkart QC rejects brand mentions in description and keyword fields, so brand words are forbidden in the prompt *and* stripped from the output afterwards.
 - 🆔 **Collision-free SKUs.** Pattern-based (`TC_BT/{X}`, `TC_60*90_BT/{X}`) with a persistent ledger. Model Number mirrors the SKU; Model Name stays the keyword-rich title.
+- 📏 **Resolution guard.** Flipkart states a 1100×1100 minimum but does not enforce it — a 1080×1080 file sailed through the manual run and only becomes a problem at QC. Every upload is measured and anything undersized is upscaled to 1200×1200 with Lanczos3, which holds type edges on flat brand graphics.
 - 🔁 **Read-back verification.** The variant matrix silently drops values on its first save — so every row is re-read after saving and repaired before the run continues.
 - 🛑 **Irreversible actions are opt-in.** Default run ends on a validated draft with every tab green. Sending to QC is a separate, deliberate tick.
 - 📡 **Live WebSocket log** with per-tab `filled/total` and error counts pulled straight off Flipkart's own tab bar.
@@ -118,6 +119,9 @@ Flipkart-listing/
 │   ├── 📁 ai/                        Gemini integration
 │   │   ├── client.js                 Shared call wrapper · model fallback · JSON mode
 │   │   └── content.js                Per-variant description / keywords / features · brand scrubbing
+│   │
+│   ├── 📁 images/
+│   │   └── normalize.js              Resolution guard — upscales anything below Flipkart's 1100px minimum
 │   │
 │   └── 📁 client/                    React 18 + Vite + Tailwind (port 5174)
 │       ├── App.jsx                   Path selector + layout + tab-status panel
