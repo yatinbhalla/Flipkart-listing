@@ -48,7 +48,11 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
-const PORT = process.env.PORT || 3002;
+// API_PORT, not PORT. Dev-tooling that launches the app (and some hosts) inject
+// PORT set to the *web* port — 5174 here — which made the API bind on top of Vite
+// and serve requests from whichever socket won. Keeping a distinct name means the
+// API port is only ever changed deliberately.
+const PORT = process.env.API_PORT || 3002;
 
 // On first boot, seed the Table Cover path from the listing that was built by hand
 // so there is something runnable immediately.
@@ -64,8 +68,21 @@ async function bootstrap() {
 bootstrap()
   .catch((err) => console.error('Bootstrap failed:', err.message))
   .finally(() => {
-    server.listen(PORT, () => {
-      console.log(`\n✅  Flipkart Lister server on http://localhost:${PORT}`);
-      console.log(`   Open http://localhost:5174\n`);
-    });
+    server
+      .listen(PORT, () => {
+        console.log(`\n✅  Flipkart Lister API on http://localhost:${PORT}`);
+        console.log(`   Open the UI at http://localhost:5174\n`);
+      })
+      // Silent failure here is how a stale server from a previous run ends up
+      // serving stale code — say so loudly instead.
+      .on('error', (err) => {
+        if (err.code === 'EADDRINUSE') {
+          console.error(
+            `\n❌  Port ${PORT} is already in use — most likely an older Flipkart Lister ` +
+              `server is still running. Stop it, then start again.\n`,
+          );
+          process.exit(1);
+        }
+        throw err;
+      });
   });
