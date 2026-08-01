@@ -15,3 +15,6 @@ data/runs/
 # ─── Build output ──────────────────────────────────────────────────────────────
 node_modules/
 dist/
+
+# Debug screenshots from /api/debug/shot
+data/*.png

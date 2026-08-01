@@ -71,7 +71,14 @@ export async function setCellText(page, rowIdx, name, value, occurrence = 0) {
   if (value === undefined || value === null || value === '') return;
   const td = await cell(page, rowIdx, name, occurrence);
   const input = td.locator('input:not([type=hidden]), textarea').first();
-  await input.fill(String(value));
+  // Name the column in the failure. A bare Playwright timeout quoting an internal
+  // data-fkv token says nothing about which of ~35 columns went wrong.
+  await input.fill(String(value)).catch((err) => {
+    throw new Error(
+      `Could not type into variant column "${name}"${occurrence ? ` (#${occurrence + 1})` : ''} ` +
+        `on row ${rowIdx}: ${String(err.message).split('\n')[0]}`,
+    );
+  });
   await settle(page, 300);
 }
 

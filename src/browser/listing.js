@@ -16,6 +16,25 @@ export async function selectVertical(page, verticalLabel, log) {
   await page.goto(ADD_LISTING_URL, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(4000);
 
+  await F.dismissOverlays(page);
+
+  // The target differs from the dashboard URL only by its hash, so Playwright
+  // performs a same-document navigation and the SPA may not re-render the route.
+  // Wait for the vertical picker; force a hard reload if it never appears.
+  const picker = page.locator('text=/Select The Vertical/i').first();
+  if (!(await picker.isVisible().catch(() => false))) {
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(5000);
+  }
+  await picker.waitFor({ state: 'visible', timeout: 45000 }).catch(() => {});
+  await F.dismissOverlays(page);
+  if (!(await picker.isVisible().catch(() => false))) {
+    throw new Error(
+      'The vertical picker never rendered. The browser is usually signed out when this ' +
+        'happens — check the Chromium window.',
+    );
+  }
+
   // Favourited verticals appear as cards under "Your Verticals" — cheapest path.
   const card = page.locator('div').filter({ hasText: new RegExp(`^${verticalLabel}$`) }).first();
   if (await card.count()) {
@@ -35,27 +54,91 @@ export async function selectVertical(page, verticalLabel, log) {
     }
   }
 
-  const cont = page.locator('button:has-text("Continue")').first();
-  if (await cont.count()) {
-    await cont.click();
-    await page.waitForTimeout(3000);
+  // Clear the satisfaction survey, which pops up on a timer over this panel.
+  await F.dismissOverlays(page);
+
+  // The button that advances to the brand step is labelled "Select Brand", not
+  // "Continue" — an older build of this page used Continue, and looking only for
+  // that meant this step silently clicked nothing at all. Accept either.
+  const proceed = page
+    .locator('button:has-text("Select Brand"), button:has-text("Continue")')
+    .first();
+  if (!(await proceed.count())) {
+    throw new Error(
+      `Selected "${verticalLabel}" but found no button to advance to the brand step ` +
+        `(expected "Select Brand" or "Continue").`,
+    );
+  }
+  await proceed.scrollIntoViewIfNeeded().catch(() => {});
+  await proceed.click({ timeout: 15000 }).catch(async () => {
+    await F.dismissOverlays(page);
+    await proceed.click({ timeout: 15000 });
+  });
+  await page.waitForTimeout(3000);
+
+  // Only claim success once the brand step is actually on screen. Logging a tick
+  // unconditionally here is what made a blank page look like a working run.
+  const onBrandStep = await page
+    .locator('button:has-text("Check Brand")')
+    .first()
+    .waitFor({ state: 'visible', timeout: 30000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!onBrandStep) {
+    throw new Error(
+      `Selected "${verticalLabel}" but the brand step never appeared — the vertical card ` +
+        `may not have been clicked.`,
+    );
   }
   log(`✓ Vertical: ${verticalLabel}`);
 }
 
 export async function selectBrand(page, brand, log) {
-  const input = page.locator('input').first();
-  await input.fill(brand);
-  await page.locator('button:has-text("Check Brand")').first().click();
-  await page.waitForTimeout(3000);
+  await F.dismissOverlays(page);
+  // Anchor on the button, not on "the first input on the page" — that resolves to a
+  // hidden seller_session_unique_token field and fill() then times out waiting for
+  // something that will never be visible. The brand box is the nearest non-hidden
+  // input before the button.
+  const check = page.locator('button:has-text("Check Brand")').first();
+  await check.waitFor({ state: 'visible', timeout: 60000 });
 
+  let input = check.locator('xpath=preceding::input[not(@type="hidden")][1]');
+  if (!(await input.count())) {
+    input = page.locator('input[type="text"]:visible, input:not([type]):visible').first();
+  }
+
+  await input.fill(brand);
+  // Confirm the text actually landed before spending a click on the check.
+  const typed = await input.inputValue().catch(() => '');
+  if (typed.trim() !== brand.trim()) {
+    throw new Error(`Could not type the brand name — the field read "${typed}" instead of "${brand}".`);
+  }
+
+  await check.click();
+
+  // The brand check is a round trip to Flipkart. A fixed sleep then a one-shot
+  // existence check made this intermittently report "brand not approved" for a
+  // brand that is perfectly fine — it just hadn't answered yet. Wait for the real
+  // outcome instead, and only call it a rejection once a rejection is on screen.
   const create = page.locator('button:has-text("Create new listing")').first();
-  if (!(await create.count())) {
+  const approved = await create
+    .waitFor({ state: 'visible', timeout: 30000 })
+    .then(() => true)
+    .catch(() => false);
+
+  if (!approved) {
+    const message = await page
+      .locator('text=/cannot|not allowed|not approved|brand.*violation|invalid/i')
+      .first()
+      .innerText()
+      .catch(() => '');
     throw new Error(
-      `Flipkart did not approve the brand "${brand}". Check the spelling, or that ` +
-        `your account is authorised to sell under it.`,
+      `Flipkart did not approve the brand "${brand}"` +
+        (message ? ` — "${message.trim().slice(0, 120)}"` : ' (no response within 30s)') +
+        `. Check the spelling, or that your account is authorised to sell under it.`,
     );
   }
+
   await create.click();
   await page.waitForTimeout(5000);
   log(`✓ Brand: ${brand}`);
@@ -209,8 +292,10 @@ async function fillVariantRow(page, i, v) {
 
   await V.setCellText(page, i, 'Model Number', v.modelNumber);
   await V.setCellText(page, i, 'Model Name', v.modelName);
-  await V.setCellText(page, i, 'Pack of', v.packOf);
-  await V.setCellPick(page, i, 'Seating Capacity', v.seatingCapacity);
+  // Color, Pack of and Seating Capacity are NOT filled here. They are the variant
+  // axis columns — read-only labels that identify which variant the row is, carrying
+  // no input at all. Their values come from addVariant(); trying to type into them
+  // just times out waiting for a control that does not exist.
 
   await V.setCellPills(page, i, 'Items Included', v.itemsIncluded);
   await V.setCellPills(page, i, 'Brand Color', v.brandColor);

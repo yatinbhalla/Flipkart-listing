@@ -1,4 +1,6 @@
 import express from 'express';
+import fs from 'fs/promises';
+import crypto from 'crypto';
 import { broadcast, getActiveRun, setActiveRun, clearActiveRun } from '../index.js';
 import { getPath, allocateSku, sharedImagePaths, resolveVariant } from '../store.js';
 import { getSession } from '../../browser/session.js';
@@ -18,6 +20,30 @@ const AXES_NEEDING_IMAGE = new Set(['Color', 'Pack of']);
 
 export function variantNeedsImage(variant) {
   return AXES_NEEDING_IMAGE.has(variant.axis);
+}
+
+const hashFile = async (file) =>
+  crypto.createHash('md5').update(await fs.readFile(file)).digest('hex');
+
+/**
+ * Reject a Front View that is byte-identical to one of the reused images.
+ *
+ * Flipkart's catalog validation fails the whole listing with
+ * CMS_CATALOG_VALIDATION_FAILURE_DUPLICATE_IMAGE_FOUND when two slots hold the same
+ * photo — and it only surfaces at QC, long after the run reported success. Cheaper
+ * to catch it here: the form is otherwise perfectly valid, so nothing else warns.
+ */
+async function findDuplicateImages(fronts, shared) {
+  const sharedHashes = new Map();
+  for (const [i, file] of shared.entries()) {
+    if (file) sharedHashes.set(await hashFile(file), `reused slot ${i + 2}`);
+  }
+  const clashes = [];
+  for (const front of fronts) {
+    const hit = sharedHashes.get(await hashFile(front));
+    if (hit) clashes.push(`${front.split(/[\\/]/).pop()} is the same image as your ${hit}`);
+  }
+  return clashes;
 }
 
 /**
@@ -96,6 +122,24 @@ router.post('/', async (req, res) => {
     await buildListing(path);
   } catch (err) {
     return res.status(400).json({ error: err.message });
+  }
+
+  // …and before building a listing Flipkart will only reject at QC.
+  try {
+    const shared = await sharedImagePaths(pathId);
+    const clashes = await findDuplicateImages(
+      [...fronts, ...Object.values(variantImages)],
+      shared,
+    );
+    if (clashes.length) {
+      return res.status(400).json({
+        error:
+          `Duplicate image: ${clashes.join('; ')}. Flipkart fails the whole listing at QC ` +
+          `(DUPLICATE_IMAGE_FOUND) when two slots hold the same photo — pick a different Front View.`,
+      });
+    }
+  } catch (err) {
+    return res.status(400).json({ error: `Could not read the images: ${err.message}` });
   }
 
   setActiveRun(pathId);

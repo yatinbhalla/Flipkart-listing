@@ -104,12 +104,35 @@ export async function readText(page, label, occurrence = 0) {
  * shipping provider shows "Flipkart", seating shows "4 Seater". Matching is
  * case-insensitive so callers can pass either casing.
  */
+/**
+ * Click a dropdown button and wait until its options actually render.
+ *
+ * A fixed sleep after the click is not enough: the option list is rendered
+ * asynchronously and on a slower load it arrives after the wait expires, leaving an
+ * empty menu that reads as "option not found" with a blank list of alternatives —
+ * which looks like a wrong option name rather than a timing problem. Poll for real,
+ * and click once more before giving up in case the first click missed.
+ */
+async function openMenu(page, button, label) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await button.click().catch(() => {});
+    const appeared = await page
+      .locator(`${OPTION}:visible`)
+      .first()
+      .waitFor({ state: 'visible', timeout: 6000 })
+      .then(() => true)
+      .catch(() => false);
+    if (appeared) return;
+    await settle(page, 600);
+  }
+  throw new Error(`The "${label}" dropdown did not open — no options rendered.`);
+}
+
 export async function pick(page, label, optionText, occurrence = 0) {
   if (!optionText) return;
   const row = await rowFor(page, label, occurrence);
   const button = row.locator(DROPDOWN).first();
-  await button.click();
-  await settle(page, 600);
+  await openMenu(page, button, label);
 
   const want = String(optionText).trim().toLowerCase();
   const option = page.locator(OPTION).filter({ hasText: new RegExp(`^\\s*${escapeRe(optionText)}\\s*$`, 'i') }).first();
@@ -188,8 +211,7 @@ export async function pickMulti(page, label, values, occurrence = 0) {
   if (!list.length) return;
 
   const row = await rowFor(page, label, occurrence);
-  await row.locator(DROPDOWN).first().click();
-  await settle(page, 600);
+  await openMenu(page, row.locator(DROPDOWN).first(), label);
 
   for (const value of list) {
     const want = value.toLowerCase();
@@ -297,14 +319,19 @@ export const IMAGE_SLOTS = ['Front View', 'Close Up Shot', 'Edge View', 'Flip Si
  * otherwise the second file lands in the wrong slot or is dropped.
  */
 export async function uploadImage(page, index, filePath) {
-  const slot = page.locator('[class*=ImageCardWrapper], [class*=ThumbnailWrapper]').nth(index);
-  if (await slot.count()) {
-    await slot.click().catch(() => {});
-    await settle(page, 500);
-  }
+  // Slots carry stable ids — #thumbnail_0 … #thumbnail_4. Selecting one is what
+  // renders the "Upload Photo" widget, and `#upload-image` lives inside that
+  // widget: it exists only for the currently selected slot and disappears once
+  // that slot holds an image. So the click is mandatory, not a nicety — without
+  // it, slot 2 onwards find no file input at all.
+  const slot = page.locator(`#thumbnail_${index}`);
+  await slot.waitFor({ state: 'visible', timeout: 20000 });
+  await slot.scrollIntoViewIfNeeded().catch(() => {});
+  await slot.click();
+  await settle(page, 900);
 
   const input = page.locator('#upload-image');
-  await input.waitFor({ state: 'attached', timeout: 10000 });
+  await input.waitFor({ state: 'attached', timeout: 20000 });
 
   // Wait for this specific slot's upload to come back before returning.
   const done = page
@@ -321,6 +348,92 @@ export async function countUploadedImages(page) {
 }
 
 // ─── Misc ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Close any modal or promo overlay sitting on top of the form.
+ *
+ * Seller Hub throws up a "Learn To Do Single Listing" video and a satisfaction
+ * survey on the add-listing page. They are not part of the form, but they cover it,
+ * and Playwright clicks land on the overlay instead of the field underneath — which
+ * looks like a selector bug rather than a popup. Call this after every navigation.
+ */
+/**
+ * Concrete close controls for the overlays Seller Hub actually shows. Tried first
+ * and clicked through Playwright, because a real click works even when the generic
+ * heuristic below misjudges an element.
+ */
+const KNOWN_CLOSERS = [
+  '.close-inner',            // satisfaction survey ("Please answer to help us serve you better")
+  '[class*="close-inner"]',
+  '[class*=Modal] [class*=close]',
+  '[role=dialog] [aria-label*="close" i]',
+];
+
+export async function dismissOverlays(page) {
+  for (const selector of KNOWN_CLOSERS) {
+    const closer = page.locator(selector).first();
+    if (await closer.isVisible().catch(() => false)) {
+      await closer.click({ timeout: 4000, force: true }).catch(() => {});
+      await settle(page, 600);
+    }
+  }
+
+  for (let pass = 0; pass < 4; pass++) {
+    const closed = await page.evaluate(() => {
+      const isVisible = (el) => {
+        const r = el.getBoundingClientRect();
+        return r.width > 4 && r.height > 4 && getComputedStyle(el).visibility !== 'hidden';
+      };
+
+      /**
+       * Is this element inside a floating layer?
+       *
+       * Matching ancestor class names does not work — the satisfaction survey's
+       * close button is a bare `div.close-inner` whose container carries no
+       * Modal/Dialog/Popup class at all, so a class-based rule skips exactly the
+       * overlay that blocks the form. Position + stacking context is what actually
+       * makes something an overlay, so test for that instead.
+       */
+      const inFloatingLayer = (el) => {
+        for (let n = el; n && n !== document.body; n = n.parentElement) {
+          const s = getComputedStyle(n);
+          // NOTE: z-index is often the string "auto" on these containers, and
+          // Number('auto') is NaN — so a `> 0` test silently rejects every
+          // position:fixed overlay that does not set an explicit z-index. That bug
+          // is why the survey survived two rounds of "fixes". Position alone is
+          // enough to call something a floating layer.
+          if (s.position === 'fixed') return isVisible(n);
+          const z = Number.parseInt(s.zIndex, 10);
+          if (s.position === 'absolute' && Number.isFinite(z) && z > 0) return isVisible(n);
+        }
+        return false;
+      };
+
+      let hits = 0;
+      const closers = new Set();
+      for (const el of document.querySelectorAll('*')) {
+        if (!isVisible(el) || el.children.length) continue;
+        const cls = String(el.className || '');
+        const aria = el.getAttribute?.('aria-label') || '';
+        const label = (el.innerText || '').trim();
+        const looksLikeCloser =
+          /close|dismiss/i.test(cls + ' ' + aria) || /^[×✕✖]$/.test(label);
+        if (!looksLikeCloser) continue;
+        if (!inFloatingLayer(el)) continue;
+        closers.add(el);
+      }
+      for (const el of closers) {
+        el.click();
+        hits++;
+      }
+      return hits;
+    });
+    if (!closed) break;
+    await settle(page, 800);
+  }
+  await page.keyboard.press('Escape').catch(() => {});
+  await settle(page, 400);
+}
 
 /** Scroll the form's own container (not the window — see SECTION above). */
 export async function scrollSection(page, top) {

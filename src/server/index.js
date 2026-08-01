@@ -7,6 +7,8 @@ import fs from 'fs/promises';
 import pathsRouter from './routes/paths.js';
 import runRouter from './routes/run.js';
 import uploadsRouter from './routes/uploads.js';
+import debugRouter from './routes/debug.js';
+import sessionRouter from './routes/session.js';
 import { listSkus, listPaths, savePath } from './store.js';
 import { seedPath } from './seed.js';
 
@@ -38,6 +40,8 @@ app.use(express.json({ limit: '4mb' }));
 app.use('/api/paths', pathsRouter);
 app.use('/api/run', runRouter);
 app.use('/api/uploads', uploadsRouter);
+app.use('/api/debug', debugRouter);
+app.use('/api/session', sessionRouter);
 app.get('/api/skus', async (_req, res) => res.json(await listSkus()));
 app.get('/api/health', (_req, res) => {
   const key = process.env.GEMINI_API_KEY;
