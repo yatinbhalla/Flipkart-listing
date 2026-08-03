@@ -11,6 +11,115 @@ const router = express.Router();
  * this app are almost always "the element I described is not the element on screen",
  * and guessing from screenshots is slower than asking the page.
  */
+// Listings that must never be deleted by tooling — the seller's own submissions.
+const PROTECTED_SKUS = ['TC_BT/1.1', 'TC_BT/1.11', 'TC_60*90_BT/1.1'];
+
+/**
+ * POST /api/debug/delete-listing?sku=… — delete ONE listing, safely.
+ *
+ * Deletion is irreversible and the Actions column offers Delete behind a ⋮ menu, so
+ * clicking "Delete" by text on an unfiltered table is a good way to destroy the
+ * wrong listing. This filters the table to a single SKU first, refuses outright if
+ * a protected SKU is on screen, and only then opens the row menu.
+ */
+router.post('/delete-listing', async (req, res) => {
+  const sku = String(req.query.sku || '');
+  if (!sku) return res.status(400).json({ error: 'sku is required' });
+  if (PROTECTED_SKUS.includes(sku)) {
+    return res.status(400).json({ error: `${sku} is protected and will not be deleted.` });
+  }
+
+  try {
+    const { page } = await getSession(() => {});
+    await page.goto('https://seller.flipkart.com/index.html#dashboard/listingsInProgress', {
+      waitUntil: 'domcontentloaded',
+    });
+    await page.waitForTimeout(9000);
+
+    const search = page.locator('input[placeholder*="Search by SKU" i]').first();
+    await search.waitFor({ state: 'visible', timeout: 20000 });
+    await search.fill(sku);
+    await search.press('Enter');
+    await page.waitForTimeout(6000);
+
+    // Guard: the filtered table must show our target and nothing protected.
+    const state = await page.evaluate(
+      ({ sku, PROTECTED_SKUS }) => {
+        const body = (document.body.innerText || '').replace(/\s+/g, ' ');
+        return {
+          showsTarget: body.includes(sku),
+          protectedOnScreen: PROTECTED_SKUS.filter((p) => body.includes(p)),
+        };
+      },
+      { sku, PROTECTED_SKUS },
+    );
+    if (!state.showsTarget) {
+      return res.status(404).json({ error: `Filtered for ${sku} but it is not on screen.` });
+    }
+    if (state.protectedOnScreen.length) {
+      return res.status(409).json({
+        error: `Refusing to delete: protected listing(s) ${state.protectedOnScreen.join(', ')} are also on screen.`,
+      });
+    }
+
+    // Open the row's ⋮ menu, then Delete, then confirm.
+    const menu = page.locator('[class*=Menu], [class*=kebab], [class*=ThreeDot], [class*=More]').first();
+    if (await menu.isVisible().catch(() => false)) {
+      await menu.click().catch(() => {});
+      await page.waitForTimeout(1500);
+    }
+    const del = page.locator('text=/^\\s*Delete\\s*$/').first();
+    if (!(await del.isVisible().catch(() => false))) {
+      return res.status(404).json({ error: 'Could not find a Delete control for this row.' });
+    }
+    await del.click();
+    await page.waitForTimeout(2000);
+
+    const confirm = page
+      .locator('button:has-text("Yes"), button:has-text("Confirm"), button:has-text("Delete")')
+      .last();
+    if (await confirm.isVisible().catch(() => false)) {
+      await confirm.click().catch(() => {});
+      await page.waitForTimeout(3500);
+    }
+
+    const gone = await page.evaluate((sku) => !(document.body.innerText || '').includes(sku), sku);
+    res.json({ sku, deleted: gone });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/debug/rows — every listing row on Listings-in-Progress, with the SKUs it
+ * covers and whether it offers a Delete action. Used to target a deletion at a
+ * specific listing instead of clicking the first "Delete" on the page.
+ */
+router.get('/rows', async (_req, res) => {
+  try {
+    const { page } = await getSession(() => {});
+    const rows = await page.evaluate(() => {
+      const seen = [];
+      // Each listing is a block containing its status and an Actions cell.
+      for (const el of document.querySelectorAll('div,tr')) {
+        const text = (el.innerText || '').replace(/\s+/g, ' ').trim();
+        if (!/Draft|QC In Progress|QC Failed/.test(text)) continue;
+        if (text.length > 400) continue; // too coarse — an ancestor wrapping many rows
+        const skus = [...text.matchAll(/TC_[A-Za-z0-9*_]+\/[\d.]+/g)].map((m) => m[0]);
+        seen.push({
+          text: text.slice(0, 150),
+          skus: [...new Set(skus)],
+          hasDelete: /\bDelete\b/.test(text),
+        });
+      }
+      return seen;
+    });
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /** GET /api/debug/click?text=Show&all=1 — click element(s) whose text matches. */
 router.get('/click', async (req, res) => {
   try {

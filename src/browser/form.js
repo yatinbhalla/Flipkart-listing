@@ -79,7 +79,27 @@ export async function setText(page, label, value, occurrence = 0) {
   if (value === undefined || value === null || value === '') return;
   const row = await rowFor(page, label, occurrence);
   const input = row.locator('input:not([type=hidden]), textarea').first();
-  await input.fill(String(value));
+
+  // Name the field and say what the row actually holds. A bare Playwright timeout
+  // quoting an internal data-fkq token gives nothing to act on, and the usual cause
+  // is that the field is not a plain text box at all — it is a dropdown or a pill
+  // widget whose input only exists after a click.
+  await input.fill(String(value)).catch(async (err) => {
+    const shape = await row
+      .evaluate((el) => ({
+        dropdown: Boolean(el.querySelector('button[class*=DropdownButton]')),
+        pills: Boolean(el.querySelector('.rti--container')),
+        inputs: el.querySelectorAll('input:not([type=hidden]), textarea').length,
+      }))
+      .catch(() => null);
+    const shapeText = shape
+      ? ` The field holds: ${shape.dropdown ? 'a dropdown' : shape.pills ? 'a multi-value pill widget' : `${shape.inputs} input(s)`}.`
+      : '';
+    throw new Error(
+      `Could not type into "${label}"${occurrence ? ` (#${occurrence + 1})` : ''}.${shapeText} ` +
+        `${String(err.message).split('\n')[0]}`,
+    );
+  });
   await settle(page, 350);
 }
 
@@ -272,7 +292,11 @@ export async function saveAndInspect(page, tabName, viaTab = TABS.images) {
 export async function readTabStates(page) {
   return page.evaluate(() => {
     const out = {};
-    for (const tab of document.querySelectorAll('[role=tab]')) {
+    // Address the five real tabs by their stable testids. A bare `[role=tab]` also
+    // matches the variant pills, which produced ~25 phantom "tabs" named after
+    // keywords like "transparent" and "Scratch" in the status panel.
+    const tabs = document.querySelectorAll('[data-testid*="tabitem-tab_"]');
+    for (const tab of tabs.length ? tabs : document.querySelectorAll('[role=tab]')) {
       const raw = (tab.innerText || '').replace(/\s+/g, ' ').trim();
       if (!raw) continue;
       const name = raw.split('(')[0].trim();
