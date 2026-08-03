@@ -2,7 +2,7 @@
 
 # 🛒 Flipkart Lister
 
-### *Drives Flipkart Seller Hub end to end — images, every tab, every variant, straight to QC.*
+### *Drives Flipkart Seller Hub end to end — images, every tab, every variant, straight to QC.* 
 
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)](https://react.dev)
 [![Node.js](https://img.shields.io/badge/Node.js-18+-339933?logo=node.js&logoColor=white)](https://nodejs.org)
