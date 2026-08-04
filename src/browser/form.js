@@ -148,6 +148,23 @@ async function openMenu(page, button, label) {
   throw new Error(`The "${label}" dropdown did not open — no options rendered.`);
 }
 
+/**
+ * Dismiss any open option list and wait for it to actually go.
+ *
+ * Leaving one open is not cosmetic: `pick` and `pickMulti` search the visible
+ * options globally, so a stale menu from the previous field gets searched instead
+ * of the current one.
+ */
+async function closeMenu(page) {
+  await page.keyboard.press('Escape').catch(() => {});
+  await settle(page, 250);
+  if (await page.locator(`${OPTION}:visible`).count()) {
+    // Escape is not always wired up — click a neutral spot instead.
+    await page.mouse.click(5, 5).catch(() => {});
+    await settle(page, 300);
+  }
+}
+
 export async function pick(page, label, optionText, occurrence = 0) {
   if (!optionText) return;
   const row = await rowFor(page, label, occurrence);
@@ -173,7 +190,13 @@ export async function pick(page, label, optionText, occurrence = 0) {
     const text = ((await el.innerText().catch(() => '')) || '').trim().toLowerCase();
     if (text === want) {
       await el.click();
-      await settle(page, 500);
+      await settle(page, 400);
+      // Close the menu before returning. Multi-select dropdowns (their option list
+      // starts with "Select All" rather than "Select One") stay open after a click,
+      // and the next field then reads the PREVIOUS field's still-open option list —
+      // which surfaced as 'Option "Dohar" not found for "Type"' while the Color
+      // options were on screen. Escape is harmless when the menu already closed.
+      await closeMenu(page);
       return;
     }
   }
@@ -244,12 +267,15 @@ export async function pickMulti(page, label, values, occurrence = 0) {
       if (text === want) { await el.click(); await settle(page, 350); hit = true; break; }
     }
     if (!hit) {
-      await page.keyboard.press('Escape').catch(() => {});
-      throw new Error(`Option "${value}" not found for "${label}"`);
+      const seen = [];
+      for (let i = 0; i < Math.min(count, 30); i++) {
+        seen.push(((await visible.nth(i).innerText().catch(() => '')) || '').trim());
+      }
+      await closeMenu(page);
+      throw new Error(`Option "${value}" not found for "${label}". Available: ${seen.join(' / ')}`);
     }
   }
-  await page.keyboard.press('Escape').catch(() => {});
-  await settle(page, 300);
+  await closeMenu(page);
 }
 
 // ─── Tabs ──────────────────────────────────────────────────────────────────────

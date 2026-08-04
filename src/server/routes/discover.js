@@ -43,6 +43,13 @@ router.post('/', async (req, res) => {
         for (const field of fields) {
           if (field.type !== 'dropdown' || !field.mandatory) continue;
           field.options = await F.readOptions(page, field.label).catch(() => []);
+
+          // The first option tells you the arity: "Select All" heads a
+          // multi-select, "Select One" a single-select. They must be driven
+          // differently — a single-pick click leaves a multi-select menu open, and
+          // the next field then searches the stale option list. Reporting this as
+          // `multi-pick` up front means a field map never has to guess.
+          if (/^select all$/i.test(field.options[0] || '')) field.type = 'multi-pick';
         }
       }
       tabs[tabName] = fields;

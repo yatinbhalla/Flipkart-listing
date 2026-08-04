@@ -64,10 +64,19 @@ export async function selectVertical(page, verticalLabel, log) {
   const proceed = page
     .locator('button:has-text("Select Brand"), button:has-text("Continue")')
     .first();
-  if (!(await proceed.count())) {
+
+  // Wait for it rather than testing once. Selecting a vertical triggers a fetch for
+  // the right-hand panel, so a bare count() right after the click races the render
+  // and intermittently reports "no button to advance" on a page that is simply
+  // still loading — the same mistake that made a valid brand look unapproved.
+  const appeared = await proceed
+    .waitFor({ state: 'visible', timeout: 30000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!appeared) {
     throw new Error(
-      `Selected "${verticalLabel}" but found no button to advance to the brand step ` +
-        `(expected "Select Brand" or "Continue").`,
+      `Selected "${verticalLabel}" but no button to advance to the brand step appeared ` +
+        `within 30s (expected "Select Brand" or "Continue").`,
     );
   }
   await proceed.scrollIntoViewIfNeeded().catch(() => {});
@@ -356,14 +365,36 @@ async function repairVariantRow(page, i, v) {
   return repaired;
 }
 
-/** Final gate: every tab green, no error badges. */
+/**
+ * Final gate.
+ *
+ * Two things this gets right that the obvious version does not:
+ *
+ *  1. The last tab filled has never been left, so it is UNSAVED and its counters
+ *     are stale. Bounce tabs first to force the save, then read.
+ *  2. Counters are not a completeness signal anyway — a finished listing sat at
+ *     "Product Description (5/15)" and "Additional Description (0/26)" while
+ *     Flipkart considered it perfectly submittable, because the totals count every
+ *     attribute rather than the mandatory ones. The authoritative verdict is
+ *     whether Flipkart enables its own Send to QC button.
+ */
 export async function verifyReady(page) {
+  await F.openTab(page, F.TABS.images);
+  await F.openTab(page, F.TABS.price);
+
   const states = await F.readTabStates(page);
   const problems = [];
   for (const [name, s] of Object.entries(states)) {
     if (s.errors > 0) problems.push(`${name}: ${s.errors} error(s)`);
   }
-  return { states, problems, ready: problems.length === 0 };
+
+  const qc = page.locator('button:has-text("Send to QC")').first();
+  const submittable = (await qc.count()) ? !(await qc.isDisabled().catch(() => true)) : false;
+  if (!submittable) {
+    problems.push('Flipkart has not enabled "Send to QC" — the listing is still incomplete');
+  }
+
+  return { states, problems, submittable, ready: problems.length === 0 };
 }
 
 export async function sendToQc(page, log) {

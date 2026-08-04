@@ -41,11 +41,16 @@ export function buildSpecs(variant) {
     const cm = (n) => Math.round(Number(n) * INCH_TO_CM);
     add('Size', `${width} x ${length} inches (approximately ${cm(width)} x ${cm(length)} cm)`);
   }
-  add('Material', list(variant.material));
-  add('Colour', list(variant.colorText));
+  // Field names differ by vertical — Table Cover calls it `material` and
+  // `colorText`, Blanket calls the same things `outerMaterial` and `brandColor`.
+  // Fall through the aliases so the spec block is complete either way.
+  add('Material', list(variant.material ?? variant.outerMaterial));
+  add('Colour', list(variant.colorText ?? variant.brandColor ?? variant.color));
   add('Pattern', list(variant.pattern));
   add('Type', variant.type);
   add('Seating capacity', variant.seatingCapacity);
+  add('Ideal for', variant.idealFor);
+  add('Ideal usage', variant.idealUsage);
   add('Pack contents', list(variant.itemsIncluded));
   add('Reversible', variant.reversible);
   add('Wrinkle free', variant.wrinkleFree);
@@ -119,10 +124,26 @@ Return JSON exactly:
   };
 
   const body = scrub(out.description).slice(0, 3500);
+
+  // Seller-supplied keywords go in first and are never dropped. A model asked for
+  // "10 to 14 search phrases" will not reliably include a specific term like
+  // "dohar", and the terms a seller knows their buyers type are not negotiable.
+  const mustHave = (path.extraKeywords || []).map((k) => String(k).trim()).filter(Boolean);
+  const seen = new Set();
+  const searchKeywords = [...mustHave, ...(out.searchKeywords || []).map(scrub)]
+    .map((k) => k.trim())
+    .filter((k) => {
+      const key = k.toLowerCase();
+      if (!k || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 20);
+
   const copy = {
     specs,
     description: (body + renderSpecs(specs)).slice(0, 4500),
-    searchKeywords: (out.searchKeywords || []).map(scrub).filter(Boolean).slice(0, 14),
+    searchKeywords,
     keyFeatures: (out.keyFeatures || []).map(scrub).filter(Boolean).slice(0, 8),
     modelName: scrub(out.modelName),
     generatedAt: new Date().toISOString(),
