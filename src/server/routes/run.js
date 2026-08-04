@@ -82,6 +82,37 @@ router.post('/preview', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/run/send-to-qc — submit a draft that was left for review.
+ *
+ * The normal flow ends on a validated draft so a human can look at it; this is how
+ * that draft gets submitted afterwards without rebuilding it. Body: { url } to open
+ * the draft first, otherwise it acts on whatever the browser is showing.
+ *
+ * Uses a real Playwright click: Flipkart's React buttons ignore a programmatic
+ * element.click(), which looks like a successful submit that never happened.
+ */
+router.post('/send-to-qc', async (req, res) => {
+  const log = (text) => broadcast({ type: 'info', text });
+  try {
+    const { page } = await getSession(log);
+    if (req.body?.url) {
+      await page.goto(String(req.body.url), { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(10000);
+    }
+    const { problems, submittable } = await L.verifyReady(page);
+    if (!submittable) {
+      return res.status(400).json({ error: `Not submittable — ${problems.join('; ')}` });
+    }
+    await L.sendToQc(page, log);
+    broadcast({ type: 'success', text: 'Sent to QC.' });
+    res.json({ sent: true });
+  } catch (err) {
+    broadcast({ type: 'error', text: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── POST /api/run — drive the real listings ─────────────────────────────────
 // `frontImages` is an array of absolute paths: one listing per image, run
 // sequentially in a single browser session.
