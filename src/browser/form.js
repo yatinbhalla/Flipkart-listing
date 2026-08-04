@@ -271,10 +271,20 @@ export const TABS = {
  * switch followed by a re-read.
  */
 export async function openTab(page, tabName) {
+  // Clear popups first: Seller Hub raises a promo video and a satisfaction survey
+  // on timers, and a click that lands on an overlay instead of the tab looks like a
+  // selector bug. dismissOverlays is a no-op when nothing is up, so this is safe to
+  // run on every switch.
+  await dismissOverlays(page);
+
   const tab = page.locator('[role=tab]').filter({ hasText: tabName }).first();
-  await tab.click();
+  await tab.click({ timeout: 15000 }).catch(async () => {
+    await dismissOverlays(page);
+    await tab.click({ timeout: 15000 });
+  });
   await page.waitForTimeout(2500);
   await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+  await dismissOverlays(page);
 }
 
 /**
@@ -310,6 +320,65 @@ export async function readTabStates(page) {
     }
     return out;
   });
+}
+
+/**
+ * Enumerate every field on the current tab: its label, whether it is mandatory, and
+ * what kind of control it actually is.
+ *
+ * This is how a new vertical gets "recorded" — the form already knows its own
+ * schema, so there is no need to record clicks. Knowing the control type up front
+ * also avoids the class of bug where a dropdown or pill widget gets driven as a
+ * text box and fails 30 seconds later.
+ */
+export async function describeFields(page) {
+  return page.evaluate(
+    ({ PANEL, LABEL, NAME_WRAP }) => {
+      const panel = document.querySelector(PANEL);
+      if (!panel) return [];
+      const seen = [];
+      for (const el of panel.querySelectorAll(LABEL)) {
+        const wrap = el.closest(NAME_WRAP);
+        const row = wrap?.parentElement;
+        if (!row) continue;
+        const label = (el.innerText || '').replace(/\*/g, '').trim();
+        if (!label) continue;
+
+        const dropdown = row.querySelector('button[class*=DropdownButton]');
+        const pills = row.querySelector('.rti--container');
+        const area = row.querySelector('textarea');
+        const input = row.querySelector('input:not([type=hidden])');
+        seen.push({
+          label,
+          mandatory: Boolean(
+            wrap.querySelector('[class*=MandatoryStar]') || /\*\s*$/.test(el.innerText || ''),
+          ),
+          type: pills ? 'multi-value' : dropdown ? 'dropdown' : area ? 'long text' : input ? 'text' : 'unknown',
+          unit: (row.innerText.match(/\b(CM|KG|INR|DAY|PERCENTAGE|inch|mm|g)\b/) || [])[1] || null,
+        });
+      }
+      return seen;
+    },
+    { PANEL, LABEL, NAME_WRAP },
+  );
+}
+
+/** Open a dropdown by label and return its option list, then close it. */
+export async function readOptions(page, label, occurrence = 0) {
+  const row = await rowFor(page, label, occurrence);
+  const button = row.locator(DROPDOWN).first();
+  if (!(await button.count())) return [];
+  await button.click().catch(() => {});
+  await settle(page, 700);
+  const visible = page.locator(`${OPTION}:visible`);
+  const out = [];
+  const count = await visible.count();
+  for (let i = 0; i < Math.min(count, 60); i++) {
+    out.push(((await visible.nth(i).innerText().catch(() => '')) || '').trim());
+  }
+  await page.keyboard.press('Escape').catch(() => {});
+  await settle(page, 300);
+  return out.filter(Boolean);
 }
 
 /** Every inline validation message currently rendered on this tab. */

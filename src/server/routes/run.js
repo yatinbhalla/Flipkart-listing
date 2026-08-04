@@ -180,9 +180,7 @@ router.post('/', async (req, res) => {
         await L.selectBrand(page, path.brand, log);
         await L.uploadImages(page, [front, ...shared], log);
 
-        await L.fillPriceStock(page, parent, log);
-        await L.fillProductDescription(page, parent, log);
-        await L.fillAdditional(page, parent, log);
+        await L.fillTabs(page, path, parent, log);
         await L.fillVariants(page, resolved, log);
 
         const { states, problems, ready } = await L.verifyReady(page);

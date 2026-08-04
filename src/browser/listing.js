@@ -8,6 +8,7 @@
 
 import * as F from './form.js';
 import * as V from './variants.js';
+import { fillTab } from './fill.js';
 
 const ADD_LISTING_URL = 'https://seller.flipkart.com/index.html#dashboard/addListings/single';
 
@@ -156,6 +157,26 @@ export async function uploadImages(page, images, log) {
     await F.uploadImage(page, i, images[i]);
   }
   log('✓ Images uploaded.');
+}
+
+/**
+ * Fill every attribute tab from the path's declared field map.
+ *
+ * Preferred over the per-tab functions below: verticals do not share a schema, so
+ * a path that declares its own fields can be added without touching this file.
+ * Falls back to the Table Cover functions when a path has no `fields` map, so the
+ * original seeded path keeps working unchanged.
+ */
+export async function fillTabs(page, path, variant, log) {
+  if (!path.fields) {
+    await fillPriceStock(page, variant, log);
+    await fillProductDescription(page, variant, log);
+    await fillAdditional(page, variant, log);
+    return;
+  }
+  for (const [tabName, fields] of Object.entries(path.fields)) {
+    await fillTab(page, tabName, fields, variant, log);
+  }
 }
 
 export async function fillPriceStock(page, v, log) {

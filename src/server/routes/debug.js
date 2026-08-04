@@ -120,6 +120,22 @@ router.get('/rows', async (_req, res) => {
   }
 });
 
+/** GET /api/debug/type?placeholder=…&value=… — type into a visible input. */
+router.get('/type', async (req, res) => {
+  try {
+    const { page } = await getSession(() => {});
+    const input = page
+      .locator(`input[placeholder*="${String(req.query.placeholder || '')}" i]`)
+      .first();
+    await input.waitFor({ state: 'visible', timeout: 15000 });
+    await input.fill(String(req.query.value || ''));
+    await page.waitForTimeout(Number(req.query.wait || 4000));
+    res.json({ ok: true, value: await input.inputValue().catch(() => null) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /** GET /api/debug/click?text=Show&all=1 — click element(s) whose text matches. */
 router.get('/click', async (req, res) => {
   try {
