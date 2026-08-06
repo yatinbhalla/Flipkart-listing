@@ -10,11 +10,18 @@ import uploadsRouter from './routes/uploads.js';
 import debugRouter from './routes/debug.js';
 import sessionRouter from './routes/session.js';
 import discoverRouter from './routes/discover.js';
+import { setAiRecovery } from '../browser/form.js';
+import { recoverClick } from '../ai/recover.js';
 import { listSkus, listPaths, savePath } from './store.js';
 import { seedPath } from './seed.js';
 
 const app = express();
 const server = createServer(app);
+
+// Give the browser layer its AI fallback. Only fires after the deterministic path
+// has failed, and only when a Gemini key is configured — the executor works
+// without it, just with fewer second chances.
+setAiRecovery(recoverClick, (text) => broadcast({ type: 'info', text }));
 
 // Attached to the same HTTP server so Vite's proxy forwards /ws without extra config.
 const wss = new WebSocketServer({ server, path: '/ws' });

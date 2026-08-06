@@ -18,6 +18,23 @@ const PILL = '[class*=SmallPillContainer]';
 
 const settle = (page, ms = 400) => page.waitForTimeout(ms);
 
+// ─── AI fallback ───────────────────────────────────────────────────────────────
+// Injected rather than imported so the browser layer keeps working with no Gemini
+// key, and so a run can turn it off. Set from the server at boot.
+let _aiRecovery = null;
+let _aiLog = () => {};
+
+export function setAiRecovery(fn, log) {
+  _aiRecovery = fn;
+  if (log) _aiLog = log;
+}
+
+/** Ask the AI fallback to unstick the page. Resolves false when disabled. */
+async function aiRecovery({ page, intent, near, scope }) {
+  if (!_aiRecovery) return false;
+  return _aiRecovery({ page, intent, near, scope, log: _aiLog }).catch(() => false);
+}
+
 /**
  * Tag the DOM node for a labelled field row with a unique attribute, then hand back
  * a Playwright locator for it.
@@ -210,6 +227,49 @@ export async function pick(page, label, optionText, occurrence = 0) {
 }
 
 /**
+ * Click a point inside `container` that no child element covers.
+ *
+ * Clicking a multi-value field's centre only works while it is empty. Once it
+ * holds chips — and Flipkart pre-populates Search Keywords with its own suggestion
+ * chips — the centre lands on a chip, which selects or removes it instead of
+ * focusing the input, so the input never appears. Corners are no better: the chips
+ * wrap, so which corner is free changes as values are added.
+ *
+ * So compute it: walk a grid inside the container, bottom-up and right-to-left
+ * (new chips flow left-to-right, top-to-bottom, leaving free space at the end),
+ * and click the first point whose topmost element is the container itself.
+ */
+async function clickEmptySpace(page, container) {
+  const point = await container
+    .evaluate((el) => {
+      const box = el.getBoundingClientRect();
+      const inset = 6;
+      for (let y = box.bottom - inset; y > box.top + inset; y -= 8) {
+        for (let x = box.right - inset; x > box.left + inset; x -= 12) {
+          const top = document.elementFromPoint(x, y);
+          if (!top || !(top === el || el.contains(top))) continue;
+          // Empty space is anything inside the widget that is not a chip. Testing
+          // `top === el` alone fails: the chips live inside a nested wrapper div, so
+          // even genuinely empty points resolve to that wrapper rather than the
+          // container, and every point gets rejected.
+          if (top.closest('[role=tab]')) continue;
+          return { x, y };
+        }
+      }
+      return null;
+    })
+    .catch(() => null);
+
+  if (point) {
+    await page.mouse.click(point.x, point.y);
+  } else {
+    // Wholly covered — fall back to the container's own click.
+    await container.click({ timeout: 10000 }).catch(() => {});
+  }
+  await settle(page, 300);
+}
+
+/**
  * Fill a multi-value (pill / chip) field.
  *
  * These are react-tag-input-component widgets. Three rules, all learned the hard way:
@@ -227,11 +287,75 @@ export async function setPills(page, label, values, occurrence = 0) {
 
   const row = await rowFor(page, label, occurrence);
   const container = row.locator('.rti--container').first();
+  // rowFor stamps the row with a unique data-fkq; reuse it to scope AI recovery to
+  // this field rather than the whole page.
+  const rowScope = await row.evaluate((el) => `[data-fkq="${el.getAttribute('data-fkq')}"]`).catch(() => null);
 
   for (const value of list) {
-    await container.click();
     const input = row.locator('.rti--input').first();
-    await input.waitFor({ state: 'visible', timeout: 5000 });
+
+    // Try typing straight away first. The widget usually KEEPS focus after a commit,
+    // and clicking before every value is what broke multi-value fields that hold a
+    // single chip: the re-click landed on that chip, so exactly one value ever went
+    // in. Only go hunting for empty space when the input has genuinely gone.
+    let ready = await input.isVisible().catch(() => false);
+
+    for (let attempt = 0; attempt < 2 && !ready; attempt++) {
+      if (attempt) {
+        await dismissOverlays(page);
+        await settle(page, 400);
+      }
+      await container.scrollIntoViewIfNeeded().catch(() => {});
+      await clickEmptySpace(page, container);
+      ready = await input
+        .waitFor({ state: 'visible', timeout: 8000 })
+        .then(() => true)
+        .catch(() => false);
+    }
+
+    // Last resort before failing the listing: let Gemini look at the page.
+    if (!ready) {
+      const helped = await aiRecovery({
+        page,
+        scope: rowScope,
+        intent: `Open the multi-value input for the "${label}" field so a new value can be typed into it. It already holds chips; the input appears when empty space inside the field is clicked, never on a chip.`,
+        near: label,
+      });
+      if (helped) {
+        ready = await input
+          .waitFor({ state: 'visible', timeout: 8000 })
+          .then(() => true)
+          .catch(() => false);
+      }
+    }
+
+    if (!ready) {
+      // At capacity the widget REMOVES its input entirely, so no click and no AI
+      // can reveal it. Search Keywords caps at 8 and Flipkart pre-populates it with
+      // its own suggestions, so a seller's list routinely runs out of room. A full
+      // optional field is not a reason to fail an otherwise complete listing —
+      // report what did not fit and carry on.
+      const held = await row.locator(PILL).count().catch(() => 0);
+      if (held > 0) {
+        const skipped = list.slice(list.indexOf(value));
+        // Distinguish a real cap from a field that stopped accepting after one or two
+        // values — the latter is a bug in this code, not a Flipkart limit, and saying
+        // "full" about it hides real data loss.
+        const looksLikeCap = held >= 5;
+        _aiLog(
+          looksLikeCap
+            ? `⚠ "${label}" is full at ${held} value(s) — skipped ${skipped.length}: ${skipped.join(', ')}`
+            : `⚠ "${label}" stopped accepting values after only ${held} — skipped ${skipped.length}: ` +
+              `${skipped.join(', ')}. This is unlikely to be a Flipkart cap; treat it as a defect.`,
+        );
+        return;
+      }
+      throw new Error(
+        `Could not open the "${label}" multi-value field to add "${String(value).slice(0, 40)}" — ` +
+          `its text input never appeared and the field is empty.`,
+      );
+    }
+
     await input.type(value, { delay: 8 });
     await input.press('Enter');
     await settle(page, 250);

@@ -18,3 +18,6 @@ dist/
 
 # Debug screenshots from /api/debug/shot
 data/*.png
+
+# Scratch paths for one-off run images
+f*.txt

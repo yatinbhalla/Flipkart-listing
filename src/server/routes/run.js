@@ -22,6 +22,14 @@ export function variantNeedsImage(variant) {
   return AXES_NEEDING_IMAGE.has(variant.axis);
 }
 
+const SHARED_SLOTS = ['img2', 'img3', 'img4', 'img5'];
+
+/** The path's reused images, with any run-scoped overrides applied. */
+async function resolveShared(pathId, overrides = {}) {
+  const shared = await sharedImagePaths(pathId);
+  return shared.map((file, i) => overrides[SHARED_SLOTS[i]] || file);
+}
+
 const hashFile = async (file) =>
   crypto.createHash('md5').update(await fs.readFile(file)).digest('hex');
 
@@ -121,7 +129,16 @@ router.post('/', async (req, res) => {
     return res.status(409).json({ error: 'A run is already in progress.' });
   }
 
-  const { pathId, frontImages = [], variantImages = {}, sendToQc = false } = req.body;
+  const {
+    pathId,
+    frontImages = [],
+    variantImages = {},
+    sendToQc = false,
+    // One-off replacements for the reused slots, keyed img2..img5. Scoped to this
+    // run only — the path's stored images are left alone, so a one-listing swap
+    // leaves no residue to remember to undo.
+    sharedOverrides = {},
+  } = req.body;
   const path = await getPath(pathId);
   if (!path) return res.status(404).json({ error: 'Path not found.' });
 
@@ -157,7 +174,7 @@ router.post('/', async (req, res) => {
 
   // …and before building a listing Flipkart will only reject at QC.
   try {
-    const shared = await sharedImagePaths(pathId);
+    const shared = await resolveShared(pathId, sharedOverrides);
     const clashes = await findDuplicateImages(
       [...fronts, ...Object.values(variantImages)],
       shared,
@@ -182,9 +199,12 @@ router.post('/', async (req, res) => {
   const failed = [];
 
   try {
-    const shared = await sharedImagePaths(pathId);
+    const shared = await resolveShared(pathId, sharedOverrides);
     if (shared.some((p) => !p)) {
       throw new Error('Images 2–5 are not uploaded for this path. Add them in Path settings.');
+    }
+    for (const [slot, file] of Object.entries(sharedOverrides)) {
+      log(`Using a one-off image for ${slot}: ${String(file).split(/[\\/]/).pop()}`);
     }
 
     const { page } = await getSession(log);
