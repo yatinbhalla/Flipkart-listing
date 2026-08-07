@@ -134,6 +134,10 @@ router.post('/', async (req, res) => {
     frontImages = [],
     variantImages = {},
     sendToQc = false,
+    // How many times to repeat the whole selection. Flipkart, unlike Meesho, accepts
+    // any number of listings carrying the same photo, so 5 images with repeat 4 means
+    // 20 listings — each still gets its own freshly allocated SKU.
+    repeat = 1,
     // One-off replacements for the reused slots, keyed img2..img5. Scoped to this
     // run only — the path's stored images are left alone, so a one-listing swap
     // leaves no residue to remember to undo.
@@ -142,11 +146,18 @@ router.post('/', async (req, res) => {
   const path = await getPath(pathId);
   if (!path) return res.status(404).json({ error: 'Path not found.' });
 
-  const fronts = Array.isArray(frontImages) ? frontImages : [frontImages];
-  if (!fronts.length) return res.status(400).json({ error: 'Select at least one Front View image.' });
-  if (fronts.length > MAX_BATCH) {
+  const selected = Array.isArray(frontImages) ? frontImages : [frontImages];
+  if (!selected.length) {
+    return res.status(400).json({ error: 'Select at least one Front View image.' });
+  }
+  if (selected.length > MAX_BATCH) {
     return res.status(400).json({ error: `Too many images — the limit is ${MAX_BATCH} per run.` });
   }
+
+  const cycles = Math.min(Math.max(Number(repeat) || 1, 1), 99);
+  // Repeat the selection as a whole cycle rather than consecutively per image, so a
+  // run that is stopped part-way has produced a balanced spread of the set.
+  const fronts = Array.from({ length: cycles }, () => selected).flat();
 
   // Colour / Pack-of variants need their own photo, which cannot vary per listing
   // in a batch. Allow them for a single listing only.
@@ -175,8 +186,10 @@ router.post('/', async (req, res) => {
   // …and before building a listing Flipkart will only reject at QC.
   try {
     const shared = await resolveShared(pathId, sharedOverrides);
+    // Check the distinct selection, not the repeated list — repeats are deliberate
+    // here and hashing the same file 99 times proves nothing.
     const clashes = await findDuplicateImages(
-      [...fronts, ...Object.values(variantImages)],
+      [...new Set([...selected, ...Object.values(variantImages)])],
       shared,
     );
     if (clashes.length) {
@@ -191,7 +204,7 @@ router.post('/', async (req, res) => {
   }
 
   setActiveRun(pathId);
-  res.json({ started: true, total: fronts.length });
+  res.json({ started: true, total: fronts.length, images: selected.length, cycles });
 
   const log = (text) => broadcast({ type: 'info', text });
   const fail = (text) => broadcast({ type: 'error', text });
@@ -208,6 +221,9 @@ router.post('/', async (req, res) => {
     }
 
     const { page } = await getSession(log);
+    if (cycles > 1) {
+      log(`Repeating ${selected.length} image(s) × ${cycles} = ${fronts.length} listings.`);
+    }
     broadcast({ type: 'event', event: 'batch-start', total: fronts.length });
 
     for (let i = 0; i < fronts.length; i++) {

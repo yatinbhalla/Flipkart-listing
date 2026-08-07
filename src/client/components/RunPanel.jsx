@@ -16,18 +16,25 @@ export default function RunPanel({ path, running, progress, onStarted }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notes, setNotes] = useState([]);
+  const [repeatOn, setRepeatOn] = useState(false);
+  const [repeat, setRepeat] = useState(2);
 
   const imageVariants = path.variants.filter(needsOwnImage);
   // A per-listing photo can't vary across a batch, so those paths list one at a time.
   const batchAllowed = imageVariants.length === 0;
   const copyReady = path.variants.every((v) => v.copy);
 
+  // Flipkart, unlike Meesho, accepts any number of listings carrying the same photo,
+  // so a selection can be repeated to produce several listings per image.
+  const cycles = repeatOn ? Math.min(Math.max(Number(repeat) || 1, 1), 99) : 1;
+  const totalListings = fronts.length * cycles;
+
   const ready =
     fronts.length > 0 &&
     copyReady &&
     path._sharedImagesReady &&
     imageVariants.every((v) => variantImages[v.key]) &&
-    (batchAllowed || fronts.length === 1);
+    (batchAllowed || totalListings === 1);
 
   async function upload(files, onDone) {
     setBusy(true);
@@ -91,6 +98,7 @@ export default function RunPanel({ path, running, progress, onStarted }) {
         body: JSON.stringify({
           pathId: path.id,
           frontImages: fronts.map((f) => f.path),
+          repeat: cycles,
           variantImages: Object.fromEntries(
             Object.entries(variantImages).map(([k, v]) => [k, v.path]),
           ),
@@ -110,18 +118,19 @@ export default function RunPanel({ path, running, progress, onStarted }) {
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <h3 className="mb-1 text-sm font-semibold">
-          Front View images — one listing per image
-        </h3>
+        <h3 className="mb-1 text-sm font-semibold">Front View images</h3>
         <p className="mb-3 text-xs text-slate-500">
           {batchAllowed
             ? `Select up to ${MAX_BATCH}. They are listed one after another in a single browser session, each with its own SKU.`
             : `This path has variants that need their own photo, so it lists one at a time.`}
         </p>
 
+        {/* Always multi-select. Gating the `multiple` attribute on the path's variant
+            shape meant a perfectly batchable path could still end up single-pick;
+            the one-at-a-time rule is enforced by validation below instead. */}
         <input
           type="file"
-          multiple={batchAllowed}
+          multiple
           accept="image/png,image/jpeg,image/webp"
           disabled={busy || running}
           onChange={(e) => e.target.files.length && pickFronts(e.target.files)}
@@ -132,7 +141,8 @@ export default function RunPanel({ path, running, progress, onStarted }) {
           <div className="mt-3">
             <div className="mb-1 text-xs font-medium text-emerald-700">
               {fronts.length} image{fronts.length > 1 ? 's' : ''} ready
-              {fronts.length > 1 && ` → ${fronts.length} listings`}
+              {` → ${totalListings} listing${totalListings > 1 ? 's' : ''}`}
+              {cycles > 1 && ` (${fronts.length} × ${cycles})`}
             </div>
             <div className="max-h-32 overflow-y-auto text-[11px] text-slate-500">
               {fronts.map((f, i) => (
@@ -172,6 +182,48 @@ export default function RunPanel({ path, running, progress, onStarted }) {
                 )}
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Repeat the whole selection. Flipkart accepts multiple listings with the
+            same photo, so N images × R cycles produces N×R listings, each with its
+            own SKU. */}
+        {fronts.length > 0 && batchAllowed && (
+          <div className="mt-4 border-t border-slate-100 pt-3">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={repeatOn}
+                onChange={(e) => setRepeatOn(e.target.checked)}
+                disabled={busy || running}
+              />
+              <span className="font-medium">Repeat this set</span>
+            </label>
+
+            {repeatOn && (
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                <span className="text-slate-500">Repeat</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="99"
+                  value={repeat}
+                  disabled={busy || running}
+                  onChange={(e) => setRepeat(e.target.value)}
+                  className="w-16 rounded border border-slate-300 px-2 py-1 text-xs"
+                />
+                <span className="text-slate-500">
+                  time{cycles > 1 ? 's' : ''} → {fronts.length} × {cycles} ={' '}
+                  <span className="font-semibold text-slate-700">{totalListings} listings</span>
+                </span>
+                {totalListings > 20 && (
+                  <span className="text-amber-700">
+                    ≈{Math.round((totalListings * 4) / 60)}h at ~4 min each — it runs unattended,
+                    but the browser must stay open.
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -270,7 +322,7 @@ export default function RunPanel({ path, running, progress, onStarted }) {
           {running
             ? 'Run in progress…'
             : `${sendToQc ? 'List and send to QC' : 'Create draft'}${
-                fronts.length > 1 ? ` — ${fronts.length} listings` : ''
+                totalListings > 1 ? ` — ${totalListings} listings` : ''
               }`}
         </button>
       </div>
