@@ -73,6 +73,15 @@ async function buildListing(path) {
     v.sku = await allocateSku(variant.skuPattern || path.skuPattern);
     v.modelNumber = v.sku; // Model Number mirrors the SKU exactly.
     Object.assign(v, variant.copy);
+
+    // Append the SKU to Model Name when the path asks for it. This has to happen
+    // here rather than in the stored copy: the SKU is allocated per listing, so a
+    // baked-in one would be identical across every listing on the path — and it must
+    // come after the copy is merged, since the copy carries its own modelName.
+    if (path.appendSkuToModelName && v.modelName && !v.modelName.includes(v.sku)) {
+      v.modelName = `${v.modelName} ${v.sku}`;
+    }
+
     out.push(v);
   }
   return out;
