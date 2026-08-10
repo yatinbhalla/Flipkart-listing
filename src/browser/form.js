@@ -331,7 +331,7 @@ export async function setPills(page, label, values, occurrence = 0) {
 
     if (!ready) {
       // At capacity the widget REMOVES its input entirely, so no click and no AI
-      // can reveal it. Search Keywords caps at 8 and Flipkart pre-populates it with
+      // can reveal it. Search Keywords fills up early and Flipkart pre-populates it with
       // its own suggestions, so a seller's list routinely runs out of room. A full
       // optional field is not a reason to fail an otherwise complete listing —
       // report what did not fit and carry on.

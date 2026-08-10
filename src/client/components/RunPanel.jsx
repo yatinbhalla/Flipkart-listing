@@ -3,6 +3,15 @@ import React, { useState } from 'react';
 const MAX_BATCH = 50;
 const AXES_NEEDING_IMAGE = new Set(['Color', 'Pack of']);
 
+/**
+ * Deliberately permissive. A MIME-only accept list hides files the app can actually
+ * use: Windows reports no MIME for some camera and chat-app images, and .jfif/.heic
+ * are missing from it entirely, so the picker greys out a perfectly good photo. The
+ * server sniffs the real format and converts to PNG, so let anything image-shaped
+ * through and let it decide.
+ */
+const IMAGE_ACCEPT = 'image/*,.jpg,.jpeg,.jpe,.jfif,.png,.webp,.avif,.tif,.tiff,.heic,.heif,.bmp';
+
 /** Colour / Pack-of variants look different, so each needs its own photo. */
 function needsOwnImage(variant) {
   return AXES_NEEDING_IMAGE.has(variant.axis);
@@ -52,6 +61,14 @@ export default function RunPanel({ path, running, progress, onStarted }) {
       const upscaled = data.images.filter((i) => i.upscaled);
       if (upscaled.length) {
         setNotes((prev) => [...prev, `${upscaled.length} image(s) upscaled to clear the 1100px minimum.`]);
+      }
+      const converted = data.images.filter((i) => i.convertedFrom);
+      if (converted.length) {
+        const kinds = [...new Set(converted.map((i) => i.convertedFrom))].join(', ');
+        setNotes((prev) => [
+          ...prev,
+          `${converted.length} image(s) converted from ${kinds} to PNG — Flipkart's uploader only takes JPG and PNG.`,
+        ]);
       }
       onDone(data.images);
     } catch (err) {
@@ -131,7 +148,7 @@ export default function RunPanel({ path, running, progress, onStarted }) {
         <input
           type="file"
           multiple
-          accept="image/png,image/jpeg,image/webp"
+          accept={IMAGE_ACCEPT}
           disabled={busy || running}
           onChange={(e) => e.target.files.length && pickFronts(e.target.files)}
           className="text-xs file:mr-2 file:rounded file:border-0 file:bg-slate-100 file:px-2 file:py-1"
@@ -167,7 +184,7 @@ export default function RunPanel({ path, running, progress, onStarted }) {
                 <div className="w-48 shrink-0 text-sm font-medium">{variant.label}</div>
                 <input
                   type="file"
-                  accept="image/png,image/jpeg,image/webp"
+                  accept={IMAGE_ACCEPT}
                   disabled={busy || running}
                   onChange={(e) =>
                     e.target.files[0] &&

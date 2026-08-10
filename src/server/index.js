@@ -78,24 +78,30 @@ async function bootstrap() {
   }
 }
 
+// Silent failure here is how a stale server from a previous run ends up serving
+// stale code — say so loudly instead. This has to be attached to `wss` as well as
+// `server`: ws mirrors every http-server error onto the WebSocketServer, and an
+// unhandled 'error' there throws before this handler would otherwise run.
+function onListenError(err) {
+  if (err.code === 'EADDRINUSE') {
+    console.error(
+      `\n❌  Port ${PORT} is already in use — most likely an older Flipkart Lister ` +
+        `server is still running. Stop it, then start again:\n` +
+        `      npx kill-port ${PORT}\n`,
+    );
+    process.exit(1);
+  }
+  throw err;
+}
+
+server.on('error', onListenError);
+wss.on('error', onListenError);
+
 bootstrap()
   .catch((err) => console.error('Bootstrap failed:', err.message))
   .finally(() => {
-    server
-      .listen(PORT, () => {
-        console.log(`\n✅  Flipkart Lister API on http://localhost:${PORT}`);
-        console.log(`   Open the UI at http://localhost:5174\n`);
-      })
-      // Silent failure here is how a stale server from a previous run ends up
-      // serving stale code — say so loudly instead.
-      .on('error', (err) => {
-        if (err.code === 'EADDRINUSE') {
-          console.error(
-            `\n❌  Port ${PORT} is already in use — most likely an older Flipkart Lister ` +
-              `server is still running. Stop it, then start again.\n`,
-          );
-          process.exit(1);
-        }
-        throw err;
-      });
+    server.listen(PORT, () => {
+      console.log(`\n✅  Flipkart Lister API on http://localhost:${PORT}`);
+      console.log(`   Open the UI at http://localhost:5174\n`);
+    });
   });

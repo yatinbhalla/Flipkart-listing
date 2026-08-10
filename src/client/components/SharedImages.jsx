@@ -53,7 +53,7 @@ export default function SharedImages({ path, onSaved }) {
             <input
               type="file"
               name={slot.key}
-              accept="image/png,image/jpeg,image/webp"
+              accept="image/*,.jpg,.jpeg,.jpe,.jfif,.png,.webp,.avif,.tif,.tiff,.heic,.heif,.bmp"
               className="w-full text-xs file:mr-2 file:rounded file:border-0 file:bg-slate-100 file:px-2 file:py-1"
             />
           </label>

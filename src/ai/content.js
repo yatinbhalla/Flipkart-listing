@@ -45,7 +45,11 @@ export function buildSpecs(variant) {
   // `colorText`, Blanket calls the same things `outerMaterial` and `brandColor`.
   // Fall through the aliases so the spec block is complete either way.
   add('Material', list(variant.material ?? variant.outerMaterial));
-  add('Colour', list(variant.colorText ?? variant.brandColor ?? variant.color));
+  // `colorRefiner` first: it holds Flipkart's own canonical colour, which is the
+  // one value a buyer should see in a spec table. `colorText` is a free-text pill
+  // field and is often stuffed with shade synonyms (Brown, Coffee Brown, Dark
+  // Brown) — useful for search, but it reads like a data error as a spec line.
+  add('Colour', list(variant.colorRefiner ?? variant.colorText ?? variant.brandColor ?? variant.color));
   add('Pattern', list(variant.pattern));
   add('Type', variant.type);
   add('Seating capacity', variant.seatingCapacity);
@@ -102,7 +106,7 @@ HARD RULES
 Return JSON exactly:
 {
   "description": "body text with line breaks, no specification list",
-  "searchKeywords": ["10 to 14 short lowercase search phrases"],
+  "searchKeywords": ["10 short lowercase search phrases, no overlap between them"],
   "keyFeatures": ["6 to 8 short feature phrases, title case"],
   "modelName": "one keyword-rich title-style line naming the size and key attributes"
 }`;
@@ -126,8 +130,15 @@ Return JSON exactly:
   const body = scrub(out.description).slice(0, 3500);
 
   // Seller-supplied keywords go in first and are never dropped. A model asked for
-  // "10 to 14 search phrases" will not reliably include a specific term like
-  // "dohar", and the terms a seller knows their buyers type are not negotiable.
+  // search phrases will not reliably include a specific term like "dohar", and the
+  // terms a seller knows their buyers type are not negotiable.
+  //
+  // The list is cut to 10 and `extraKeywords` claim those slots first. Give a path
+  // 10 extraKeywords and the generated phrases never make it in — that is a
+  // deliberate trade, but keep the list shorter if you want the model to contribute.
+  // How many pills the field really accepts is not settled: live listings went out
+  // with 10, so any lower cap is applied by Flipkart after QC rather than by the
+  // widget. `setPills` reports whatever does not fit instead of failing the run.
   const mustHave = (path.extraKeywords || []).map((k) => String(k).trim()).filter(Boolean);
   const seen = new Set();
   const searchKeywords = [...mustHave, ...(out.searchKeywords || []).map(scrub)]
@@ -138,7 +149,7 @@ Return JSON exactly:
       seen.add(key);
       return true;
     })
-    .slice(0, 20);
+    .slice(0, 10);
 
   const copy = {
     specs,

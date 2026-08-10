@@ -3,7 +3,7 @@ import multer from 'multer';
 import fs from 'fs/promises';
 import path from 'path';
 import { listPaths, getPath, savePath, deletePath, sharedImagesDir, resolveVariant } from '../store.js';
-import { ensureMinSize } from '../../images/normalize.js';
+import { ensureMinSize, ensureFlipkartFormat } from '../../images/normalize.js';
 import { generateCopy } from '../../ai/content.js';
 import { broadcast } from '../index.js';
 
@@ -81,11 +81,9 @@ const upload = multer({
     },
     filename: (_req, file, cb) => cb(null, `__tmp_${Date.now()}_${file.originalname}`),
   }),
-  limits: { fileSize: 15 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) =>
-    /jpe?g|png|webp/i.test(path.extname(file.originalname))
-      ? cb(null, true)
-      : cb(new Error('Only JPG, PNG and WebP images are allowed.')),
+  limits: { fileSize: 25 * 1024 * 1024 },
+  // No extension filter — see uploads.js. The format is sniffed from the contents
+  // and converted after upload.
 });
 
 router.post(
@@ -102,13 +100,21 @@ router.post(
       for (const slot of ['img2', 'img3', 'img4', 'img5']) {
         const file = req.files?.[slot]?.[0];
         if (!file) continue;
-        const ext = path.extname(file.originalname).toLowerCase();
+
+        // Convert to a format Flipkart's widget accepts before naming the slot, so
+        // the stored extension always reflects the real, usable format.
+        const converted = await ensureFlipkartFormat(path.resolve(file.path));
+        const ext = path.extname(converted.file).toLowerCase();
+        if (converted.changed) {
+          broadcast({ type: 'info', text: `${slot}: converted ${converted.from} → png.` });
+        }
+
         // Drop any previous file for this slot, whatever extension it had.
         for (const existing of await fs.readdir(dir)) {
           if (existing.startsWith(slot + '.')) await fs.rm(path.join(dir, existing), { force: true });
         }
         const dest = path.join(dir, `${slot}${ext}`);
-        await fs.rename(file.path, dest);
+        await fs.rename(converted.file, dest);
 
         // Undersized images are a QC-rejection risk and the upload widget does not
         // catch them, so fix them here rather than discovering it after submission.

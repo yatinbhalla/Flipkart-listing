@@ -2,7 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import fs from 'fs/promises';
 import path from 'path';
-import { ensureMinSize } from '../../images/normalize.js';
+import { ensureMinSize, ensureFlipkartFormat } from '../../images/normalize.js';
 import { MAX_BATCH } from '../constants.js';
 
 const router = express.Router();
@@ -21,11 +21,12 @@ const upload = multer({
     },
     filename: (_req, file, cb) => cb(null, `${Date.now()}_${file.originalname.replace(/[^\w.-]+/g, '_')}`),
   }),
-  limits: { fileSize: 15 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) =>
-    /jpe?g|png|webp/i.test(path.extname(file.originalname))
-      ? cb(null, true)
-      : cb(new Error('Only JPG, PNG and WebP images are allowed.')),
+  limits: { fileSize: 25 * 1024 * 1024 },
+  // No extension filter. Rejecting on the filename turns away images that are
+  // perfectly usable — a phone or chat app hands over .jfif, .heic, an uppercase
+  // .JPG, or no extension at all. The real format is sniffed from the file contents
+  // after upload and converted to something Flipkart accepts, so the only genuine
+  // failure is a file that is not an image.
 });
 
 /**
@@ -41,8 +42,12 @@ router.post('/front', upload.array('image', MAX_BATCH), async (req, res) => {
   const images = [];
   const rejected = [];
   for (const file of files) {
-    const resolved = path.resolve(file.path);
+    let resolved = path.resolve(file.path);
     try {
+      // Convert first: Flipkart's widget only accepts .jpg/.png, and the conversion
+      // can change the path, so resizing has to work on the converted file.
+      const converted = await ensureFlipkartFormat(resolved);
+      resolved = converted.file;
       const sized = await ensureMinSize(resolved);
       images.push({
         path: resolved,
@@ -50,6 +55,7 @@ router.post('/front', upload.array('image', MAX_BATCH), async (req, res) => {
         width: sized.to[0],
         height: sized.to[1],
         upscaled: sized.changed,
+        convertedFrom: converted.changed ? converted.from : null,
       });
     } catch (err) {
       rejected.push({ name: file.originalname, error: err.message });
