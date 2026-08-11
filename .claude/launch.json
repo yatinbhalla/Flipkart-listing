@@ -5,7 +5,8 @@
       "name": "flipkart-lister",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["start"],
-      "port": 5174
+      "port": 5174,
+      "autoPort": true
     }
   ]
 }

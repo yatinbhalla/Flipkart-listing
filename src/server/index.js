@@ -61,11 +61,19 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
-// API_PORT, not PORT. Dev-tooling that launches the app (and some hosts) inject
-// PORT set to the *web* port — 5174 here — which made the API bind on top of Vite
-// and serve requests from whichever socket won. Keeping a distinct name means the
-// API port is only ever changed deliberately.
-const PORT = process.env.API_PORT || 3002;
+/**
+ * Never bind PORT directly. Dev tooling that launches the app injects PORT set to
+ * the *web* port, and binding that put the API on top of Vite with requests going to
+ * whichever socket won.
+ *
+ * But ignoring PORT entirely was also wrong: it pinned the API to 3002 while the web
+ * port was free to move, so a second copy of the app could not start. So derive it —
+ * PORT + 1 when a host assigned one, 3002 otherwise. vite.config.js derives the
+ * proxy target the same way; keep the two in step.
+ */
+const PORT =
+  Number(process.env.API_PORT) ||
+  (process.env.PORT ? Number(process.env.PORT) + 1 : 3002);
 
 // On first boot, seed the Table Cover path from the listing that was built by hand
 // so there is something runnable immediately.
