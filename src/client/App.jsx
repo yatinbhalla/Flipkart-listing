@@ -4,6 +4,7 @@ import LiveLog from './components/LiveLog.jsx';
 import SharedImages from './components/SharedImages.jsx';
 import RunPanel from './components/RunPanel.jsx';
 import CopyPanel from './components/CopyPanel.jsx';
+import SavedImagesBadge from './components/SavedImagesBadge.jsx';
 
 export default function App() {
   const { lines, events, clear } = useWebSocket();
@@ -48,13 +49,19 @@ export default function App() {
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-8">
-      <header className="mb-6 flex items-center gap-3">
+      <header className="mb-6 flex flex-wrap items-start gap-3">
         <div className="rounded-lg bg-fk-blue px-2.5 py-1 text-lg font-bold text-fk-yellow">f</div>
         <div>
           <h1 className="text-xl font-bold text-fk-ink">Flipkart Lister</h1>
           <p className="text-xs text-slate-500">
             Drives Seller Hub end to end: images, all four tabs, variants, QC.
           </p>
+        </div>
+
+        {/* Pinned top-right so the selected path's own photos are always in view
+            while picking a Front View — the paths differ only by print. */}
+        <div className="ml-auto">
+          <SavedImagesBadge path={selected} />
         </div>
       </header>
 

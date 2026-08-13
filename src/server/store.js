@@ -8,6 +8,9 @@ const SKU_FILE = path.join(DATA, 'used_skus.json');
 export const pathDir = (id) => path.join(PATHS_DIR, id);
 export const sharedImagesDir = (id) => path.join(pathDir(id), 'shared_images');
 
+/** Image slots 2–5 — the ones reused across every listing on a path. */
+export const SHARED_SLOTS = ['img2', 'img3', 'img4', 'img5'];
+
 async function readJson(file, fallback) {
   try {
     return JSON.parse(await fs.readFile(file, 'utf8'));
@@ -28,6 +31,7 @@ export async function listPaths() {
     if (!config) continue;
     config.id = entry.name;
     config._sharedImagesReady = await sharedImagesReady(entry.name);
+    config._sharedImageSlots = await sharedImageSlots(entry.name);
     out.push(config);
   }
   return out;
@@ -38,6 +42,7 @@ export async function getPath(id) {
   if (!config) return null;
   config.id = id;
   config._sharedImagesReady = await sharedImagesReady(id);
+  config._sharedImageSlots = await sharedImageSlots(id);
   return config;
 }
 
@@ -46,6 +51,7 @@ export async function savePath(id, config) {
   const clean = { ...config };
   delete clean.id;
   delete clean._sharedImagesReady;
+  delete clean._sharedImageSlots;
   clean.updatedAt = new Date().toISOString();
   if (!clean.createdAt) clean.createdAt = clean.updatedAt;
   await fs.writeFile(path.join(pathDir(id), 'config.json'), JSON.stringify(clean, null, 2), 'utf8');
@@ -61,10 +67,30 @@ export async function deletePath(id) {
  * and reused. Only the Front View changes per listing (and per Colour / Pack-of
  * variant), which is what the user supplies at run time.
  */
+/**
+ * Which reused slots this path actually holds, with a fingerprint per slot.
+ *
+ * The fingerprint is the file's mtime and is used to bust the browser cache: swap a
+ * slot's image and the thumbnail must change, otherwise the UI would keep showing the
+ * old photo — which is precisely the confusion this is meant to prevent.
+ */
+export async function sharedImageSlots(id) {
+  const dir = sharedImagesDir(id);
+  const files = await fs.readdir(dir).catch(() => []);
+  const out = [];
+  for (const slot of SHARED_SLOTS) {
+    const hit = files.find((f) => f.startsWith(slot + '.'));
+    if (!hit) continue;
+    const stat = await fs.stat(path.join(dir, hit)).catch(() => null);
+    out.push({ slot, file: hit, v: stat ? Math.round(stat.mtimeMs) : 0 });
+  }
+  return out;
+}
+
 export async function sharedImagesReady(id) {
   try {
     const files = await fs.readdir(sharedImagesDir(id));
-    return ['img2', 'img3', 'img4', 'img5'].every((slot) =>
+    return SHARED_SLOTS.every((slot) =>
       files.some((f) => f.startsWith(slot + '.')),
     );
   } catch {

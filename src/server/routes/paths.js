@@ -2,7 +2,16 @@ import express from 'express';
 import multer from 'multer';
 import fs from 'fs/promises';
 import path from 'path';
-import { listPaths, getPath, savePath, deletePath, sharedImagesDir, resolveVariant } from '../store.js';
+import sharp from 'sharp';
+import {
+  listPaths,
+  getPath,
+  savePath,
+  deletePath,
+  sharedImagesDir,
+  resolveVariant,
+  SHARED_SLOTS,
+} from '../store.js';
 import { ensureMinSize, ensureFlipkartFormat } from '../../images/normalize.js';
 import { generateCopy } from '../../ai/content.js';
 import { broadcast } from '../index.js';
@@ -66,6 +75,46 @@ router.post('/:id/copy', async (req, res) => {
   } catch (err) {
     broadcast({ type: 'error', text: err.message });
     res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /:id/images/:slot — serve one reused image so the UI can show it.
+ *
+ * Deliberately a per-slot endpoint rather than express.static over data/paths: that
+ * directory also holds config.json, which carries the seller's manufacturer and
+ * packer addresses. The slot name is matched against a fixed list, so the path
+ * cannot be steered by the request.
+ */
+router.get('/:id/images/:slot', async (req, res) => {
+  const { slot } = req.params;
+  if (!SHARED_SLOTS.includes(slot)) return res.status(404).end();
+  try {
+    const dir = sharedImagesDir(req.params.id);
+    const files = await fs.readdir(dir);
+    const hit = files.find((f) => f.startsWith(slot + '.'));
+    if (!hit) return res.status(404).end();
+    const file = path.join(dir, hit);
+
+    // Fingerprinted by mtime in the URL, so it is safe to cache hard.
+    res.set('Cache-Control', 'public, max-age=31536000, immutable');
+
+    // ?w=N returns a thumbnail. The stored images are 1100px+ and often over a
+    // megabyte each; sending four of those to fill 51px squares makes switching
+    // paths needlessly slow when the point is a quick glance.
+    const width = Number(req.query.w);
+    if (Number.isFinite(width) && width > 0 && width <= 512) {
+      const buf = await sharp(await fs.readFile(file))
+        .resize(Math.round(width), Math.round(width), { fit: 'cover' })
+        .webp({ quality: 80 })
+        .toBuffer();
+      res.type('image/webp').send(buf);
+      return;
+    }
+
+    res.sendFile(file);
+  } catch {
+    res.status(404).end();
   }
 });
 
