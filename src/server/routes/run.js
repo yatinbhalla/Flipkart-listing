@@ -2,25 +2,20 @@ import express from 'express';
 import fs from 'fs/promises';
 import crypto from 'crypto';
 import { broadcast, getActiveRun, setActiveRun, clearActiveRun } from '../index.js';
-import { getPath, allocateSku, sharedImagePaths, resolveVariant } from '../store.js';
+import {
+  getPath,
+  allocateSku,
+  sharedImagePaths,
+  variantSharedImagePaths,
+  resolveVariant,
+} from '../store.js';
 import { getSession } from '../../browser/session.js';
 import * as L from '../../browser/listing.js';
-import { MAX_BATCH } from '../constants.js';
+import { MAX_BATCH, variantNeedsImage } from '../constants.js';
+
+export { variantNeedsImage };
 
 const router = express.Router();
-
-/**
- * Which variant axes require their own Front View image?
- *
- * Seating Capacity variants are the same product photographed once — Flipkart does
- * not ask for another image. Colour and Pack-of variants look different, so each
- * needs its own front image. Images 2–5 are reused either way.
- */
-const AXES_NEEDING_IMAGE = new Set(['Color', 'Pack of']);
-
-export function variantNeedsImage(variant) {
-  return AXES_NEEDING_IMAGE.has(variant.axis);
-}
 
 const SHARED_SLOTS = ['img2', 'img3', 'img4', 'img5'];
 
@@ -201,12 +196,51 @@ router.post('/', async (req, res) => {
       [...new Set([...selected, ...Object.values(variantImages)])],
       shared,
     );
+    // A variant that overrides one of its reused slots is checked against ITS set,
+    // not the parent's — otherwise a 1-pack whose Front View is the same photo as
+    // its own slot-4 pack shot sails past this guard and dies at QC instead.
+    for (const v of path.variants.slice(1)) {
+      const front = variantImages[v.key];
+      if (!front) continue;
+      const own = await variantSharedImagePaths(pathId, v.key, shared);
+      if (own.every((f, i) => f === shared[i])) continue;
+      for (const hit of await findDuplicateImages([front], own)) {
+        clashes.push(`${v.label || v.key}: ${hit}`);
+      }
+    }
     if (clashes.length) {
       return res.status(400).json({
         error:
           `Duplicate image: ${clashes.join('; ')}. Flipkart fails the whole listing at QC ` +
           `(DUPLICATE_IMAGE_FOUND) when two slots hold the same photo — pick a different Front View.`,
       });
+    }
+
+    // Every variant must go out with the SAME number of photos.
+    //
+    // A buyer flipping between pack sizes on one product page sees a different
+    // number of pictures per option otherwise, and it reads as a broken listing.
+    // It is also the quiet failure mode of per-variant overrides: drop an img4 in
+    // one variant's folder and forget the others and nothing complains — the run
+    // just uploads five photos for one option and four for the next.
+    if (imageVariants.length) {
+      const counts = [
+        { label: `${path.variants[0].label || 'parent'} (parent)`, n: 1 + shared.filter(Boolean).length },
+      ];
+      for (const v of imageVariants) {
+        const own = await variantSharedImagePaths(pathId, v.key, shared);
+        counts.push({ label: v.label || v.key, n: 1 + own.filter(Boolean).length });
+      }
+      const distinct = [...new Set(counts.map((c) => c.n))];
+      if (distinct.length > 1) {
+        return res.status(400).json({
+          error:
+            `Variants would get different numbers of images — ` +
+            `${counts.map((c) => `${c.label}: ${c.n}`).join(', ')}. ` +
+            `Every variant needs the same count, or the product page shows a different ` +
+            `number of photos per pack size.`,
+        });
+      }
     }
   } catch (err) {
     return res.status(400).json({ error: `Could not read the images: ${err.message}` });
@@ -222,8 +256,17 @@ router.post('/', async (req, res) => {
 
   try {
     const shared = await resolveShared(pathId, sharedOverrides);
-    if (shared.some((p) => !p)) {
+    // Trailing slots may be empty — see sharedImagesReady(). A hole in the middle
+    // is still rejected, because that is what a failed upload looks like.
+    if (!shared[0]) {
       throw new Error('Images 2–5 are not uploaded for this path. Add them in Path settings.');
+    }
+    const gap = shared.findIndex((p) => !p);
+    if (gap !== -1 && shared.slice(gap).some(Boolean)) {
+      throw new Error(
+        `Reused image slot ${gap + 2} is empty but a later slot is filled — ` +
+          `an upload probably failed. Re-check the images for this path.`,
+      );
     }
     for (const [slot, file] of Object.entries(sharedOverrides)) {
       log(`Using a one-off image for ${slot}: ${String(file).split(/[\\/]/).pop()}`);
@@ -257,7 +300,15 @@ router.post('/', async (req, res) => {
         await L.uploadImages(page, [front, ...shared], log);
 
         await L.fillTabs(page, path, parent, log);
-        await L.fillVariants(page, resolved, log);
+        // Slots 2–5 per variant: the path's reused set, with any per-variant file
+        // (typically the slot-4 pack-size shot) swapped in.
+        const variantShared = {};
+        for (const v of path.variants.slice(1)) {
+          variantShared[v.key] = await variantSharedImagePaths(pathId, v.key, shared);
+        }
+        await L.fillVariants(
+          page, resolved, log, path.variantColumns || null, variantImages, shared, variantShared,
+        );
 
         const { states, problems, ready } = await L.verifyReady(page);
         broadcast({ type: 'event', event: 'tabs', states });

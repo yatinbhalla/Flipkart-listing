@@ -19,5 +19,9 @@ dist/
 # Debug screenshots from /api/debug/shot
 data/*.png
 
+# Scratch request bodies and DOM dumps from debugging a run. These quote live
+# Seller Hub markup, so they stay local.
+data/*.json
+
 # Scratch paths for one-off run images
 f*.txt

@@ -46,6 +46,18 @@ async function colIndex(page, name, occurrence = 0) {
   );
 }
 
+/**
+ * Does this matrix have such a column?
+ *
+ * The column set is per-vertical and does not match the tab field set — Hanging
+ * Organizers has no Model Number column even though Model Number is a mandatory
+ * field on its Product Description tab. A config-driven row filler needs to skip
+ * what is not there rather than abort the listing.
+ */
+export async function hasColumn(page, name, occurrence = 0) {
+  return colIndex(page, name, occurrence).then(() => true).catch(() => false);
+}
+
 /** Tag one cell so we can drive it with real Playwright events. */
 async function cell(page, rowIdx, name, occurrence = 0) {
   const col = await colIndex(page, name, occurrence);
@@ -65,6 +77,36 @@ async function cell(page, rowIdx, name, occurrence = 0) {
   const loc = page.locator(`[data-fkv="${token}"]`);
   await loc.scrollIntoViewIfNeeded().catch(() => {});
   return loc;
+}
+
+/**
+ * Open a cell's dropdown and wait for its options to render.
+ *
+ * WHY it retries: a single click is not reliable here. The column before a
+ * dropdown is often a pill cell, and committing a pill leaves its input focused —
+ * the blur that follows re-renders that part of the row, and a click landing in
+ * that window opens nothing. The symptom is a menu with zero options and an error
+ * reading `Available: ` with nothing after it, which looks like a bad option value
+ * rather than a menu that never opened.
+ */
+async function openCellMenu(page, td, name) {
+  const options = page.locator(`${OPTION}:visible`);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    // Close whatever is already open BEFORE clicking. The option locator is global,
+    // so a menu left behind by the previous column still counts as "options are
+    // visible" — the caller then searches that stale list and reports a perfectly
+    // valid value as missing. That is exactly how "Flipkart" went missing from
+    // Shipping provider on a column that had worked the run before.
+    if (await options.count()) {
+      await page.keyboard.press('Escape').catch(() => {});
+      await settle(page, 400);
+    }
+    await td.scrollIntoViewIfNeeded().catch(() => {});
+    await td.locator('button[class*=DropdownButton]').first().click().catch(() => {});
+    await settle(page, 700);
+    if (await options.count()) return true;
+  }
+  throw new Error(`Variant column "${name}" dropdown would not open after 3 attempts.`);
 }
 
 export async function setCellText(page, rowIdx, name, value, occurrence = 0) {
@@ -98,8 +140,7 @@ export async function readCellText(page, rowIdx, name, occurrence = 0) {
 export async function setCellPick(page, rowIdx, name, optionText, occurrence = 0) {
   if (!optionText) return;
   const td = await cell(page, rowIdx, name, occurrence);
-  await td.locator('button[class*=DropdownButton]').first().click();
-  await settle(page, 600);
+  await openCellMenu(page, td, name);
 
   const want = String(optionText).trim().toLowerCase();
   const visible = page.locator(`${OPTION}:visible`);
@@ -113,24 +154,165 @@ export async function setCellPick(page, rowIdx, name, optionText, occurrence = 0
       return;
     }
   }
+  const seen = [];
+  for (let i = 0; i < Math.min(count, 30); i++) {
+    seen.push(((await visible.nth(i).innerText().catch(() => '')) || '').trim());
+  }
   await page.keyboard.press('Escape').catch(() => {});
-  throw new Error(`Variant option "${optionText}" not found for column "${name}"`);
+  throw new Error(
+    `Variant option "${optionText}" not found for column "${name}". Available: ${seen.join(' / ')}`,
+  );
+}
+
+/**
+ * Multi-select columns — the matrix twin of form.js `pickMulti`.
+ *
+ * Material and Color on Hanging Organizers take several values each, and the menu
+ * stays open between clicks, so every value is picked from one opening and the menu
+ * is closed with Escape at the end. Passing an array to setCellPick instead
+ * stringifies it to "Cloth,Fabric" and matches no option at all.
+ */
+export async function setCellPickMulti(page, rowIdx, name, values, occurrence = 0) {
+  const list = (Array.isArray(values) ? values : [values]).map((v) => String(v).trim()).filter(Boolean);
+  if (!list.length) return;
+
+  const td = await cell(page, rowIdx, name, occurrence);
+  await openCellMenu(page, td, name);
+
+  for (const value of list) {
+    const want = value.toLowerCase();
+    const visible = page.locator(`${OPTION}:visible`);
+    const count = await visible.count();
+    let hit = false;
+    for (let i = 0; i < count; i++) {
+      const el = visible.nth(i);
+      const text = ((await el.innerText().catch(() => '')) || '').trim().toLowerCase();
+      if (text === want) { await el.click(); await settle(page, 350); hit = true; break; }
+    }
+    if (!hit) {
+      const seen = [];
+      for (let i = 0; i < Math.min(count, 30); i++) {
+        seen.push(((await visible.nth(i).innerText().catch(() => '')) || '').trim());
+      }
+      await page.keyboard.press('Escape').catch(() => {});
+      throw new Error(
+        `Variant option "${value}" not found for column "${name}". Available: ${seen.join(' / ')}`,
+      );
+    }
+  }
+  await page.keyboard.press('Escape').catch(() => {});
+  await settle(page, 300);
 }
 
 /** Multi-value columns use the same pill widget as the main form. */
 export async function setCellPills(page, rowIdx, name, values, occurrence = 0) {
   const list = (Array.isArray(values) ? values : [values]).map((v) => String(v).trim()).filter(Boolean);
   if (!list.length) return;
+  // A dropdown menu left open by an earlier column floats over the row and
+  // swallows the container click, so clear it before touching this cell.
+  await page.keyboard.press('Escape').catch(() => {});
+  await settle(page, 250);
+
   const td = await cell(page, rowIdx, name, occurrence);
   const container = td.locator('.rti--container').first();
-  for (const value of list) {
-    await container.click();
+
+  // Pills carry their text in a `label` attribute, so committed values can be read
+  // back exactly instead of counted. Counting is not enough: a retry that re-types
+  // a value already present proves nothing about WHICH value is missing.
+  const committed = async () =>
+    new Set(
+      await td
+        .locator(PILL)
+        .evaluateAll((els) =>
+          els.map((e) => (e.getAttribute('label') || e.innerText || '').trim().toLowerCase()),
+        )
+        .catch(() => []),
+    );
+
+  const outstanding = async () => {
+    const have = await committed();
+    return list.filter((v) => !have.has(v.toLowerCase()));
+  };
+
+  // WHY one focused burst per pass instead of a click before every value: the
+  // container click is itself the race. Committing a pill re-renders the widget, so
+  // clicking again immediately lands mid-render and the keystrokes go nowhere — that
+  // is how "Dusty Pink" vanished from the middle of three, and how Key Features kept
+  // only its first of seven. Typing straight into the still-focused input avoids the
+  // re-click entirely, and whatever slips through is picked up by the next pass.
+  //
+  // The widget's own helper text says Enter OR comma commits, so alternate: if Enter
+  // is being swallowed on this render, comma usually is not.
+  for (let pass = 0; pass < 4; pass++) {
+    const todo = await outstanding();
+    if (!todo.length) return;
+
+    await container.click().catch(() => {});
     const input = td.locator('.rti--input').first();
-    await input.waitFor({ state: 'visible', timeout: 5000 });
-    await input.type(value, { delay: 8 });
-    await input.press('Enter');
-    await settle(page, 250);
+    const ready = await input
+      .waitFor({ state: 'visible', timeout: 5000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!ready) {
+      await settle(page, 700);
+      continue;
+    }
+
+    try {
+      await input.fill('');
+      for (const value of todo) {
+        await input.type(value, { delay: 12 });
+        await input.press(pass % 2 === 0 ? 'Enter' : ',');
+        await settle(page, 350);
+      }
+    } catch {
+      // The input was torn out mid-burst. Whatever committed still counts; the
+      // next pass re-reads the cell and retypes only what is genuinely missing.
+    }
+    await settle(page, 800);
   }
+
+  const left = await outstanding();
+  if (left.length) {
+    const got = [...(await committed())];
+    throw new Error(
+      `Variant cell "${name}" (row ${rowIdx}) would not accept: ${left.join(' / ')}. ` +
+        `Cell holds: ${got.join(' / ') || '(empty)'}`,
+    );
+  }
+}
+
+/**
+ * Point the variant image strip at one variant.
+ *
+ * The Variant tab carries its own "Image addition" block with a side menu listing
+ * every variant by its axis value (6 / 3 / 12 for Number of Holders). Clicking an
+ * entry swaps the strip below it, and the strip then reuses the same
+ * `#thumbnail_N` / `#upload-image` ids as the main Image tab — so the ordinary
+ * uploader works once the right variant is selected.
+ */
+export async function selectVariantImageTarget(page, value) {
+  const want = String(value).trim();
+  const item = page
+    .locator('[class*=SideMenuItem]')
+    .filter({ has: page.locator(`[class*=SideMenuItemText]:text-is("${want}")`) })
+    .first();
+  const found = await item
+    .waitFor({ state: 'visible', timeout: 20000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!found) {
+    const seen = await page
+      .locator('[class*=SideMenuItemText]')
+      .allInnerTexts()
+      .catch(() => []);
+    throw new Error(
+      `No variant image target "${want}". Side menu shows: ${seen.map((s) => s.trim()).join(' / ') || '(none)'}`,
+    );
+  }
+  await item.scrollIntoViewIfNeeded().catch(() => {});
+  await item.click();
+  await settle(page, 1200);
 }
 
 export async function countCellPills(page, rowIdx, name, occurrence = 0) {

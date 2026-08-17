@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-
-const MAX_BATCH = 50;
-const AXES_NEEDING_IMAGE = new Set(['Color', 'Pack of']);
+// One definition, shared with the run route — a client-side copy of either of these
+// silently drifted once already and cost a run.
+import { MAX_BATCH, variantNeedsImage } from '../../server/constants.js';
 
 /**
  * Deliberately permissive. A MIME-only accept list hides files the app can actually
@@ -11,11 +11,6 @@ const AXES_NEEDING_IMAGE = new Set(['Color', 'Pack of']);
  * through and let it decide.
  */
 const IMAGE_ACCEPT = 'image/*,.jpg,.jpeg,.jpe,.jfif,.png,.webp,.avif,.tif,.tiff,.heic,.heif,.bmp';
-
-/** Colour / Pack-of variants look different, so each needs its own photo. */
-function needsOwnImage(variant) {
-  return AXES_NEEDING_IMAGE.has(variant.axis);
-}
 
 export default function RunPanel({ path, running, progress, onStarted }) {
   const [fronts, setFronts] = useState([]);        // [{ path, name, width, height, upscaled }]
@@ -28,7 +23,7 @@ export default function RunPanel({ path, running, progress, onStarted }) {
   const [repeatOn, setRepeatOn] = useState(false);
   const [repeat, setRepeat] = useState(2);
 
-  const imageVariants = path.variants.filter(needsOwnImage);
+  const imageVariants = path.variants.filter(variantNeedsImage);
   // A per-listing photo can't vary across a batch, so those paths list one at a time.
   const batchAllowed = imageVariants.length === 0;
   const copyReady = path.variants.every((v) => v.copy);
@@ -38,10 +33,25 @@ export default function RunPanel({ path, running, progress, onStarted }) {
   const cycles = repeatOn ? Math.min(Math.max(Number(repeat) || 1, 1), 99) : 1;
   const totalListings = fronts.length * cycles;
 
+  // Every variant must ship the same number of photos, or the product page shows a
+  // different count per pack size. Counted here so it is visible before the run
+  // rather than surfacing as a server error after pressing the button.
+  const photoCounts = imageVariants.length
+    ? path.variants.map((v) => ({
+        key: v.key,
+        label: v.label || v.key,
+        parent: v === path.variants[0],
+        n: 1 + (path._variantImages?.[v.key]?.reused ?? path._sharedImageSlots.length),
+        own: path._variantImages?.[v.key]?.own ?? 0,
+      }))
+    : [];
+  const countsMatch = new Set(photoCounts.map((c) => c.n)).size <= 1;
+
   const ready =
     fronts.length > 0 &&
     copyReady &&
     path._sharedImagesReady &&
+    countsMatch &&
     imageVariants.every((v) => variantImages[v.key]) &&
     (batchAllowed || totalListings === 1);
 
@@ -139,8 +149,15 @@ export default function RunPanel({ path, running, progress, onStarted }) {
         <p className="mb-3 text-xs text-slate-500">
           {batchAllowed
             ? `Select up to ${MAX_BATCH}. They are listed one after another in a single browser session, each with its own SKU.`
-            : `This path has variants that need their own photo, so it lists one at a time.`}
+            : `Each of the ${path.variants.length} variants needs its own Front View, so this path lists one at a time. Pick all ${path.variants.length} below.`}
         </p>
+
+        {!batchAllowed && (
+          <div className="mb-1 text-sm font-medium">
+            {path.variants[0].label || 'Parent'}{' '}
+            <span className="font-normal text-slate-400">(main listing)</span>
+          </div>
+        )}
 
         {/* Always multi-select. Gating the `multiple` attribute on the path's variant
             shape meant a perfectly batchable path could still end up single-pick;
@@ -199,6 +216,35 @@ export default function RunPanel({ path, running, progress, onStarted }) {
                 )}
               </div>
             ))}
+          </div>
+        )}
+
+        {photoCounts.length > 0 && (
+          <div className="mt-4 border-t border-slate-100 pt-3">
+            <div className="mb-1 text-xs font-medium text-slate-600">
+              Photos per variant{' '}
+              <span className="font-normal text-slate-400">(1 Front View + reused slots 2–5)</span>
+            </div>
+            {photoCounts.map((c) => (
+              <div key={c.key} className="flex justify-between gap-2 text-[11px] text-slate-500">
+                <span className="truncate">
+                  {c.label}
+                  {c.parent && ' (main)'}
+                  {c.own > 0 && (
+                    <span className="text-slate-400"> · {c.own} own</span>
+                  )}
+                </span>
+                <span className={countsMatch ? 'shrink-0' : 'shrink-0 font-semibold text-rose-600'}>
+                  {c.n} images
+                </span>
+              </div>
+            ))}
+            {!countsMatch && (
+              <p className="mt-2 text-xs text-rose-600">
+                Variants would get different numbers of photos. Flipkart shows each pack size its
+                own gallery, so the counts must match before this can run.
+              </p>
+            )}
           </div>
         )}
 

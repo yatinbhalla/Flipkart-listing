@@ -32,7 +32,27 @@ export async function listPaths() {
     config.id = entry.name;
     config._sharedImagesReady = await sharedImagesReady(entry.name);
     config._sharedImageSlots = await sharedImageSlots(entry.name);
+    config._variantImages = await variantImageCounts(entry.name);
     out.push(config);
+  }
+  return out;
+}
+
+/**
+ * How many reused images each variant would actually receive, and how many of them
+ * are its own rather than inherited. The UI shows this so a mismatched count is
+ * visible before a run rather than after it reaches Flipkart.
+ */
+async function variantImageCounts(id) {
+  const base = await sharedImagePaths(id);
+  const config = await readJson(path.join(pathDir(id), 'config.json'), null);
+  const out = {};
+  for (const v of config?.variants || []) {
+    const own = await variantSharedImagePaths(id, v.key, base);
+    out[v.key] = {
+      reused: own.filter(Boolean).length,
+      own: own.filter((f, i) => f && f !== base[i]).length,
+    };
   }
   return out;
 }
@@ -43,6 +63,7 @@ export async function getPath(id) {
   config.id = id;
   config._sharedImagesReady = await sharedImagesReady(id);
   config._sharedImageSlots = await sharedImageSlots(id);
+  config._variantImages = await variantImageCounts(id);
   return config;
 }
 
@@ -52,6 +73,7 @@ export async function savePath(id, config) {
   delete clean.id;
   delete clean._sharedImagesReady;
   delete clean._sharedImageSlots;
+  delete clean._variantImages;
   clean.updatedAt = new Date().toISOString();
   if (!clean.createdAt) clean.createdAt = clean.updatedAt;
   await fs.writeFile(path.join(pathDir(id), 'config.json'), JSON.stringify(clean, null, 2), 'utf8');
@@ -87,12 +109,24 @@ export async function sharedImageSlots(id) {
   return out;
 }
 
+/**
+ * Ready means the slots fill from 2 upward with no hole in the middle.
+ *
+ * WHY not "all four present": not every product has five usable photos. The wall
+ * hanging organiser has four — front, close up, edge, brand card — so its Package
+ * View slot is deliberately empty and demanding a fifth would mean padding it with
+ * a duplicate. `uploadImages` already skips empty slots.
+ *
+ * A gap in the MIDDLE is still not ready. Slot 3 empty while slot 4 is filled
+ * almost always means an upload failed silently rather than that the seller meant
+ * it, and shipping that would put the wrong photo under the wrong caption.
+ */
 export async function sharedImagesReady(id) {
   try {
     const files = await fs.readdir(sharedImagesDir(id));
-    return SHARED_SLOTS.every((slot) =>
-      files.some((f) => f.startsWith(slot + '.')),
-    );
+    const present = SHARED_SLOTS.map((slot) => files.some((f) => f.startsWith(slot + '.')));
+    if (!present[0]) return false;
+    return !present.some((has, i) => !has && present.slice(i).some(Boolean));
   } catch {
     return false;
   }
@@ -104,6 +138,28 @@ export async function sharedImagePaths(id) {
   return ['img2', 'img3', 'img4', 'img5'].map((slot) => {
     const hit = files.find((f) => f.startsWith(slot + '.'));
     return hit ? path.join(dir, hit) : null;
+  });
+}
+
+export const variantImagesDir = (id, key) => path.join(pathDir(id), 'variants', String(key));
+
+/**
+ * Slots 2–5 for one variant: the path's reused images, with any per-variant file
+ * swapped in.
+ *
+ * WHY a variant needs its own reused slot: on the wall hanging organiser, slot 4 is
+ * the lifestyle shot that shows HOW MANY panels you get. A pack of 1, 2 and 4 are
+ * three different photographs, so serving the parent's two-panel image to the
+ * one-pack variant contradicts what that variant sells. Everything else — the
+ * infographic, the fabric close-up, the brand card — is genuinely identical, so
+ * only the differing slot is overridden and the rest fall through.
+ */
+export async function variantSharedImagePaths(id, key, fallback) {
+  const dir = variantImagesDir(id, key);
+  const files = await fs.readdir(dir).catch(() => []);
+  return SHARED_SLOTS.map((slot, i) => {
+    const hit = files.find((f) => f.startsWith(slot + '.'));
+    return hit ? path.join(dir, hit) : fallback[i];
   });
 }
 

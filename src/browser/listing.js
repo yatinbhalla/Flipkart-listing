@@ -262,7 +262,18 @@ export async function fillAdditional(page, v, log) {
  * Row 0 is the parent listing (already filled through the tabs above), so extra
  * variants start at row 1.
  */
-export async function fillVariants(page, variants, log) {
+/**
+ * Commit the Variant tab. Switching tabs IS the save — there is no save button —
+ * so bouncing out and back is how work on this tab is persisted.
+ */
+async function saveVariantTab(page) {
+  await F.openTab(page, F.TABS.description);
+  await F.openTab(page, F.TABS.variants);
+}
+
+export async function fillVariants(
+  page, variants, log, columns = null, variantImages = {}, shared = [], variantShared = {},
+) {
   if (variants.length < 2) return;
 
   await F.openTab(page, F.TABS.variants);
@@ -273,19 +284,56 @@ export async function fillVariants(page, variants, log) {
     await V.addVariant(page, v.axis, v.axisValue);
   }
 
+  // BANK THE VARIANTS NOW. Nothing on this tab exists server-side until you leave
+  // it, so a failure later in this function used to discard the variants as well —
+  // every failed draft came back with only the parent, no variants, and therefore
+  // nowhere to attach variant images. Verified by hand on draft WH_P_SET/48895:
+  // creating a variant, switching tabs and returning kept it; failing before the
+  // switch lost it.
+  log('Saving variants…');
+  await saveVariantTab(page);
+
+  // Images before the matrix, and banked separately. Filling ~38 cells per row is
+  // by far the most failure-prone step here, and there is no reason for it to be
+  // able to throw away photos that already uploaded cleanly.
+  for (let i = 1; i < variants.length; i++) {
+    const v = variants[i];
+    const front = variantImages[v.key];
+    if (!front) continue;
+    log(`Images for variant ${v.axisValue} (${v.label})…`);
+    await V.selectVariantImageTarget(page, v.axisValue);
+    // Slots 2–5 come from this variant's own set where it has one — slot 4 shows
+    // the pack size, so a 1-pack must not display the parent's two-panel photo.
+    const reused = variantShared[v.key] || shared;
+    const set = [front, ...reused];
+    const own = reused.filter((f, i) => f && f !== shared[i]).length;
+    for (let s = 0; s < set.length && s < 5; s++) {
+      if (!set[s]) continue;
+      await F.uploadImage(page, s, set[s]);
+    }
+    log(
+      `  ✓ ${set.filter(Boolean).length} image(s) for variant ${v.axisValue}` +
+        `${own ? ` (${own} variant-specific)` : ''}.`,
+    );
+  }
+  if (variants.slice(1).some((v) => variantImages[v.key])) {
+    log('Saving variant images…');
+    await saveVariantTab(page);
+  }
+
   await F.scrollSection(page, 'bottom');
 
   for (let i = 1; i < variants.length; i++) {
     const v = variants[i];
     log(`Filling variant row ${i} (${v.label})…`);
-    await fillVariantRow(page, i, v);
+    if (columns) await fillVariantRowFromMap(page, i, v, columns, log);
+    else await fillVariantRow(page, i, v);
   }
 
   // Save, then re-read. On the first pass Procurement SLA, Stock and the package
   // dimensions have come back empty — never trust the matrix until it is re-read.
-  log('Saving variants…');
-  await F.openTab(page, F.TABS.description);
-  await F.openTab(page, F.TABS.variants);
+  log('Saving variant rows…');
+  await saveVariantTab(page);
   await F.scrollSection(page, 'bottom');
 
   for (let i = 1; i < variants.length; i++) {
@@ -294,6 +342,51 @@ export async function fillVariants(page, variants, log) {
       log(`  ↻ Re-entered dropped fields on row ${i}: ${missing.join(', ')}`);
     }
   }
+}
+
+/**
+ * Fill one matrix row from a declared column map — the same idea as fillTab(), and
+ * for the same reason: the matrix column set is per-vertical.
+ *
+ * Two differences from the tab filler. Repeated headers are addressed by `at`
+ * ("Length" is both package cm and product inch, "Weight" both package kg and
+ * product g), and a column that simply is not in this vertical's matrix is skipped
+ * with a log line rather than throwing — the tabs already carried those values, and
+ * losing the whole listing over an absent column is the worse outcome.
+ */
+async function fillVariantRowFromMap(page, i, v, columns, log) {
+  const valueAt = (data, path) =>
+    String(path).split('.').reduce((acc, key) => (acc == null ? undefined : acc[key]), data);
+
+  const skipped = [];
+  for (const col of columns) {
+    const value = col.from ? valueAt(v, col.from) : col.value;
+    if (value === undefined || value === null || value === '' ||
+        (Array.isArray(value) && value.length === 0)) {
+      continue;
+    }
+    const at = col.at || 0;
+    if (!(await V.hasColumn(page, col.label, at))) {
+      skipped.push(col.label);
+      continue;
+    }
+    switch (col.type) {
+      case 'dropdown':
+        await V.setCellPick(page, i, col.label, value, at);
+        break;
+      case 'multi-pick':
+        await V.setCellPickMulti(page, i, col.label, value, at);
+        break;
+      case 'pills':
+      case 'multi-value':
+        await V.setCellPills(page, i, col.label, value, at);
+        break;
+      default:
+        await V.setCellText(page, i, col.label, value, at);
+        break;
+    }
+  }
+  if (skipped.length) log(`  · row ${i}: no such column, skipped — ${skipped.join(', ')}`);
 }
 
 async function fillVariantRow(page, i, v) {

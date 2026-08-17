@@ -1,0 +1,565 @@
+{
+  "vertical": "Hanging Organizers",
+  "discoveredAt": "2026-08-17",
+  "mandatoryCount": 28,
+  "tabs": {
+    "Price, Stock and Shipping": [
+      {
+        "label": "Seller SKU ID",
+        "mandatory": true,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Listing Status",
+        "mandatory": true,
+        "type": "dropdown",
+        "unit": null,
+        "options": [
+          "Select One",
+          "Active",
+          "Inactive"
+        ]
+      },
+      {
+        "label": "MRP",
+        "mandatory": true,
+        "type": "text",
+        "unit": "INR"
+      },
+      {
+        "label": "Your selling price",
+        "mandatory": true,
+        "type": "text",
+        "unit": "INR"
+      },
+      {
+        "label": "Minimum Order Quantity (MinOQ)",
+        "mandatory": false,
+        "type": "dropdown",
+        "unit": null
+      },
+      {
+        "label": "Fullfilment by",
+        "mandatory": true,
+        "type": "dropdown",
+        "unit": null,
+        "options": [
+          "Select One",
+          "Seller"
+        ]
+      },
+      {
+        "label": "Procurement type",
+        "mandatory": false,
+        "type": "dropdown",
+        "unit": null
+      },
+      {
+        "label": "Procurement SLA",
+        "mandatory": true,
+        "type": "text",
+        "unit": "DAY"
+      },
+      {
+        "label": "Stock",
+        "mandatory": true,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Shipping provider",
+        "mandatory": false,
+        "type": "dropdown",
+        "unit": null
+      },
+      {
+        "label": "Local handling fee",
+        "mandatory": false,
+        "type": "text",
+        "unit": "INR"
+      },
+      {
+        "label": "Zonal handling fee",
+        "mandatory": false,
+        "type": "text",
+        "unit": "INR"
+      },
+      {
+        "label": "National handling fee",
+        "mandatory": false,
+        "type": "text",
+        "unit": "INR"
+      },
+      {
+        "label": "Length",
+        "mandatory": true,
+        "type": "text",
+        "unit": "CM"
+      },
+      {
+        "label": "Breadth",
+        "mandatory": true,
+        "type": "text",
+        "unit": "CM"
+      },
+      {
+        "label": "Height",
+        "mandatory": true,
+        "type": "text",
+        "unit": "CM"
+      },
+      {
+        "label": "Weight",
+        "mandatory": true,
+        "type": "text",
+        "unit": "KG"
+      },
+      {
+        "label": "HSN",
+        "mandatory": true,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Luxury Cess",
+        "mandatory": false,
+        "type": "text",
+        "unit": "PERCENTAGE"
+      },
+      {
+        "label": "Tax Code",
+        "mandatory": true,
+        "type": "dropdown",
+        "unit": null,
+        "options": [
+          "Select One",
+          "GST_0",
+          "GST_0.25",
+          "GST_18",
+          "GST_3",
+          "GST_40",
+          "GST_5",
+          "GST_APPAREL",
+          "GST_Footwear",
+          "GST_Old_12_New_0",
+          "GST_Old_12_New_5",
+          "GST_Old_12_new_18",
+          "GST_Old_18_New_0",
+          "GST_Old_18_New_40",
+          "GST_Old_18_New_5",
+          "GST_Old_28_New_18",
+          "GST_Old_28_New_40",
+          "GST_Old_28_New_5",
+          "GST_Old_5_New_0",
+          "GST_Old_5_New_18"
+        ]
+      },
+      {
+        "label": "Country Of Origin",
+        "mandatory": true,
+        "type": "dropdown",
+        "unit": null,
+        "options": [
+          "Select One",
+          "Afghanistan",
+          "Aland Islands",
+          "Albania",
+          "Algeria",
+          "American Samoa",
+          "Andorra",
+          "Angola",
+          "Anguilla",
+          "Antarctica",
+          "Antigua and Barbuda",
+          "Argentina",
+          "Armenia",
+          "Aruba",
+          "Australia",
+          "Austria",
+          "Azerbaijan",
+          "Bahamas",
+          "Bahrain",
+          "Bangladesh",
+          "Barbados",
+          "Belarus",
+          "Belgium",
+          "Belize",
+          "Benin",
+          "Bermuda",
+          "Bhutan",
+          "Bolivia",
+          "Bosnia and Herzegovina",
+          "Botswana",
+          "Bouvet Island",
+          "Brazil",
+          "British Indian Ocean Territory",
+          "British Virgin Islands",
+          "Brunei Darussalam",
+          "Bulgaria",
+          "Burkina Faso",
+          "Burundi",
+          "Cambodia",
+          "Cameroon",
+          "Canada",
+          "Cape Verde",
+          "Cayman Islands",
+          "Central African Republic",
+          "Chad",
+          "Chile",
+          "China",
+          "Christmas Island",
+          "Cocos (Keeling) Islands",
+          "Colombia",
+          "Comoros",
+          "Congo (Brazzaville)",
+          "Congo, (Kinshasa)",
+          "Cook Islands",
+          "Costa Rica",
+          "Croatia",
+          "Cuba",
+          "Cyprus",
+          "Czech Republic",
+          "Côte d'Ivoire"
+        ]
+      },
+      {
+        "label": "Manufacturer Details",
+        "mandatory": true,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Packer Details",
+        "mandatory": true,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Importer Details",
+        "mandatory": false,
+        "type": "text",
+        "unit": null
+      }
+    ],
+    "Product Description": [
+      {
+        "label": "Model Number",
+        "mandatory": true,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Brand Color",
+        "mandatory": true,
+        "type": "multi-value",
+        "unit": null
+      },
+      {
+        "label": "Type",
+        "mandatory": true,
+        "type": "multi-pick",
+        "unit": null,
+        "options": [
+          "Select All",
+          "Accessories Organizer",
+          "Bedside Organizer",
+          "Bookcase Organizer",
+          "Closet Organizer",
+          "Fridge Organizer",
+          "Gift Wrap Organizer",
+          "Handbag Organizer",
+          "Jewellery Organizer",
+          "Regular Organizer",
+          "Scarf Organizer",
+          "Shoe Organizer",
+          "Shower Caddy Organizer",
+          "Stationery Organizer",
+          "TV & Media Console Organizer"
+        ]
+      },
+      {
+        "label": "Material",
+        "mandatory": true,
+        "type": "multi-pick",
+        "unit": null,
+        "options": [
+          "Select All",
+          "Acrylic",
+          "Bamboo",
+          "Canvas",
+          "Carbon Fiber",
+          "Cardboard",
+          "Cloth",
+          "Fabric",
+          "Felt",
+          "Hemp",
+          "Jute",
+          "Mesh",
+          "Metal",
+          "Nylon",
+          "Other Plant Fibers",
+          "Plastic",
+          "Velvet"
+        ]
+      },
+      {
+        "label": "Color",
+        "mandatory": true,
+        "type": "multi-pick",
+        "unit": null,
+        "options": [
+          "Select All",
+          "Beige",
+          "Black",
+          "Blue",
+          "Brown",
+          "Clear",
+          "Gold",
+          "Green",
+          "Grey",
+          "Maroon",
+          "Multicolor",
+          "Orange",
+          "Pink",
+          "Purple",
+          "Red",
+          "Silver",
+          "Steel",
+          "White",
+          "Yellow"
+        ]
+      },
+      {
+        "label": "Number of Holders",
+        "mandatory": true,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Holder Type",
+        "mandatory": true,
+        "type": "multi-pick",
+        "unit": null,
+        "options": [
+          "Select All",
+          "Button Loops",
+          "Compartments",
+          "Hooks",
+          "Pockets",
+          "Pull Out Drawers",
+          "Shelves",
+          "Zipper Pouches"
+        ]
+      },
+      {
+        "label": "Mounting Type",
+        "mandatory": true,
+        "type": "multi-pick",
+        "unit": null,
+        "options": [
+          "Select All",
+          "Fabric Loop",
+          "Hanger",
+          "Hook",
+          "Metal Slider",
+          "Velcro Loop",
+          "Velcro Straps"
+        ]
+      },
+      {
+        "label": "Foldable",
+        "mandatory": true,
+        "type": "dropdown",
+        "unit": null,
+        "options": [
+          "Select One",
+          "Yes",
+          "No"
+        ]
+      },
+      {
+        "label": "Width",
+        "mandatory": true,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Height",
+        "mandatory": true,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Items Included",
+        "mandatory": true,
+        "type": "multi-value",
+        "unit": null
+      }
+    ],
+    "Additional Description": [
+      {
+        "label": "Depth",
+        "mandatory": false,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Weight",
+        "mandatory": false,
+        "type": "text",
+        "unit": "g"
+      },
+      {
+        "label": "Other Dimensions",
+        "mandatory": false,
+        "type": "multi-value",
+        "unit": null
+      },
+      {
+        "label": "Description",
+        "mandatory": false,
+        "type": "long text",
+        "unit": null
+      },
+      {
+        "label": "Search Keywords",
+        "mandatory": false,
+        "type": "multi-value",
+        "unit": null
+      },
+      {
+        "label": "Key Features",
+        "mandatory": false,
+        "type": "multi-value",
+        "unit": null
+      },
+      {
+        "label": "Video URL",
+        "mandatory": false,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Model Name",
+        "mandatory": false,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Number of Pouches",
+        "mandatory": false,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Number of Loops",
+        "mandatory": false,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Number of Hooks",
+        "mandatory": false,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Number of Pockets",
+        "mandatory": false,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Hanger Included",
+        "mandatory": false,
+        "type": "dropdown",
+        "unit": null
+      },
+      {
+        "label": "Suitable For",
+        "mandatory": false,
+        "type": "multi-value",
+        "unit": null
+      },
+      {
+        "label": "Washable",
+        "mandatory": false,
+        "type": "dropdown",
+        "unit": null
+      },
+      {
+        "label": "Rust Resistant",
+        "mandatory": false,
+        "type": "dropdown",
+        "unit": null
+      },
+      {
+        "label": "EAN/UPC",
+        "mandatory": false,
+        "type": "multi-value",
+        "unit": null
+      },
+      {
+        "label": "Pack of",
+        "mandatory": false,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Case Included",
+        "mandatory": false,
+        "type": "dropdown",
+        "unit": null
+      },
+      {
+        "label": "Care Instructions",
+        "mandatory": false,
+        "type": "multi-value",
+        "unit": null
+      },
+      {
+        "label": "Other Features",
+        "mandatory": false,
+        "type": "multi-value",
+        "unit": null
+      },
+      {
+        "label": "Domestic Warranty",
+        "mandatory": false,
+        "type": "dropdown",
+        "unit": null
+      },
+      {
+        "label": "International Warranty",
+        "mandatory": false,
+        "type": "dropdown",
+        "unit": null
+      },
+      {
+        "label": "Warranty Summary",
+        "mandatory": false,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Warranty Service Type",
+        "mandatory": false,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Covered in Warranty",
+        "mandatory": false,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Not Covered in Warranty",
+        "mandatory": false,
+        "type": "text",
+        "unit": null
+      }
+    ]
+  }
+}

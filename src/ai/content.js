@@ -51,7 +51,10 @@ export function buildSpecs(variant) {
   // Brown) — useful for search, but it reads like a data error as a spec line.
   add('Colour', list(variant.colorRefiner ?? variant.colorText ?? variant.brandColor ?? variant.color));
   add('Pattern', list(variant.pattern));
-  add('Type', variant.type);
+  // `type` is a single dropdown on Table Cover but a multi-pick on Hanging
+  // Organizers, where four values are ticked at once. Without list() an array
+  // stringifies to "Bedside Organizer,Regular Organizer" with no spaces.
+  add('Type', list(variant.type));
   add('Seating capacity', variant.seatingCapacity);
   add('Ideal for', variant.idealFor);
   add('Ideal usage', variant.idealUsage);
