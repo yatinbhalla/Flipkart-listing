@@ -163,20 +163,37 @@ router.post('/', async (req, res) => {
   // run that is stopped part-way has produced a balanced spread of the set.
   const fronts = Array.from({ length: cycles }, () => selected).flat();
 
-  // Colour / Pack-of variants need their own photo, which cannot vary per listing
-  // in a batch. Allow them for a single listing only.
+  // A variant path batches too: listing i takes the i-th Front View from the parent
+  // AND from every variant, so N photos per variant produce N listings each
+  // carrying the full variant set. It used to be capped at one listing at a time
+  // because only a single photo per variant could be supplied.
+  //
+  // Slots 2-5 stay fixed across the batch, exactly as they do for a plain path —
+  // only the Front Views vary per listing.
   const imageVariants = path.variants.filter(variantNeedsImage);
-  if (imageVariants.length && fronts.length > 1) {
-    return res.status(400).json({
-      error:
-        `This path has variants that need their own image ` +
-        `(${imageVariants.map((v) => v.label || v.key).join(', ')}), so it can only be listed one at a time.`,
-    });
+  const variantFronts = {};
+  for (const v of imageVariants) {
+    const raw = variantImages[v.key];
+    const list = (Array.isArray(raw) ? raw : raw ? [raw] : []).filter(Boolean);
+    // Repeat per cycle so the variant selections stay aligned with `fronts`.
+    variantFronts[v.key] = Array.from({ length: cycles }, () => list).flat();
   }
-  const missingVariantImage = imageVariants.filter((v) => !variantImages[v.key]);
+  const missingVariantImage = imageVariants.filter((v) => !variantFronts[v.key].length);
   if (missingVariantImage.length) {
     return res.status(400).json({
       error: `Front View image missing for: ${missingVariantImage.map((v) => v.label || v.key).join(', ')}`,
+    });
+  }
+  // Counts must match exactly. Zipping a short list would silently pair the wrong
+  // photo with the wrong listing, which is invisible until the listings are live.
+  const uneven = imageVariants
+    .filter((v) => variantFronts[v.key].length !== fronts.length)
+    .map((v) => `${v.label || v.key}: ${variantFronts[v.key].length / cycles}`);
+  if (uneven.length) {
+    return res.status(400).json({
+      error:
+        `Every variant needs the same number of Front View images — ` +
+        `${path.variants[0].label || 'main listing'}: ${selected.length}, ${uneven.join(', ')}.`,
     });
   }
 
@@ -193,18 +210,18 @@ router.post('/', async (req, res) => {
     // Check the distinct selection, not the repeated list — repeats are deliberate
     // here and hashing the same file 99 times proves nothing.
     const clashes = await findDuplicateImages(
-      [...new Set([...selected, ...Object.values(variantImages)])],
+      [...new Set([...selected, ...Object.values(variantFronts).flat()])],
       shared,
     );
     // A variant that overrides one of its reused slots is checked against ITS set,
     // not the parent's — otherwise a 1-pack whose Front View is the same photo as
     // its own slot-4 pack shot sails past this guard and dies at QC instead.
     for (const v of path.variants.slice(1)) {
-      const front = variantImages[v.key];
-      if (!front) continue;
+      const list = [...new Set(variantFronts[v.key] || [])];
+      if (!list.length) continue;
       const own = await variantSharedImagePaths(pathId, v.key, shared);
       if (own.every((f, i) => f === shared[i])) continue;
-      for (const hit of await findDuplicateImages([front], own)) {
+      for (const hit of await findDuplicateImages(list, own)) {
         clashes.push(`${v.label || v.key}: ${hit}`);
       }
     }
@@ -306,8 +323,11 @@ router.post('/', async (req, res) => {
         for (const v of path.variants.slice(1)) {
           variantShared[v.key] = await variantSharedImagePaths(pathId, v.key, shared);
         }
+        // This listing's slice of the batch: the i-th Front View for each variant.
+        const listingVariantImages = {};
+        for (const v of imageVariants) listingVariantImages[v.key] = variantFronts[v.key][i];
         await L.fillVariants(
-          page, resolved, log, path.variantColumns || null, variantImages, shared, variantShared,
+          page, resolved, log, path.variantColumns || null, listingVariantImages, shared, variantShared,
         );
 
         const { states, problems, ready } = await L.verifyReady(page);

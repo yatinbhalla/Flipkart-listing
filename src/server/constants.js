@@ -9,24 +9,25 @@
 export const MAX_BATCH = 50;
 
 /**
- * Which variant axes require their own Front View image?
+ * Axes whose variants reuse the parent's photo instead of supplying their own.
  *
- * Seating Capacity variants are the same product photographed once — Flipkart does
- * not ask for another image. Colour and Pack-of variants look different, so each
- * needs its own front image.
+ * Seating Capacity is the case: a 4-seater and a 6-seater table cover are the same
+ * cloth photographed once, and Flipkart does not ask again.
  *
- * Number of Holders is the ONLY axis the Hanging Organizers vertical offers — no
- * Pack of, no Color — and there it carries the pack size (3 holders per panel, so
- * 3 / 6 / 12 is a pack of 1 / 2 / 4). A one-panel photo and a four-panel photo are
- * different pictures, so it belongs here.
- *
- * WHY it lives in this file: the run route and the RunPanel each used to keep their
- * own copy, and adding an axis to the server's list without the client's made the
- * UI quietly stop asking for per-variant photos — it rendered a single batch picker
- * for a path that needed three images. One definition, imported by both.
+ * WHY this is a denylist and not a list of axes that DO need photos: it was the
+ * other way round and the default was wrong. An unlisted axis silently meant "no
+ * photo needed", so the UI stopped rendering per-variant pickers and the run
+ * uploaded only the parent's image — no error, nothing to notice until the listing
+ * was live with the wrong picture. That happened three times: 'Number of Holders'
+ * on Hanging Organizers, then again when the client kept its own stale copy of the
+ * list, then again when Blanket's axis turned out to be 'Brand Color'. Defaulting
+ * to "this variant needs its own photo" fails loudly instead — the UI asks for an
+ * image nobody wanted, which someone notices immediately.
  */
-export const AXES_NEEDING_IMAGE = new Set(['Color', 'Pack of', 'Number of Holders']);
+export const AXES_SHARING_PARENT_IMAGE = new Set(['Seating Capacity']);
 
 export function variantNeedsImage(variant) {
-  return AXES_NEEDING_IMAGE.has(variant?.axis);
+  const axis = variant?.axis;
+  if (!axis) return false; // the parent row has no axis and uses the main picker
+  return !AXES_SHARING_PARENT_IMAGE.has(axis);
 }

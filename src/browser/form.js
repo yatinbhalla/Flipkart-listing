@@ -356,7 +356,11 @@ export async function setPills(page, label, values, occurrence = 0) {
       );
     }
 
-    await input.type(value, { delay: 8 });
+    // fill() rather than type(): typing character by character leaves the widget a
+    // window to re-render mid-word and commit only the prefix. A 36-character key
+    // feature came out as "Lightweight Breathable Mu" in the variant matrix that
+    // way, and the same widget backs this field.
+    await input.fill(String(value));
     await input.press('Enter');
     await settle(page, 250);
   }
@@ -561,33 +565,102 @@ export const IMAGE_SLOTS = ['Front View', 'Close Up Shot', 'Edge View', 'Flip Si
  * N+1 cannot be started until slot N's POST /napi/scf/uploadImage has finished —
  * otherwise the second file lands in the wrong slot or is dropped.
  */
+/**
+ * Has this slot actually got an image in it?
+ *
+ * An empty slot renders a SAMPLE placeholder with an orange "add" badge; a filled
+ * one renders a green tick. Reported together so a wrong guess about the markup
+ * shows up in the error text instead of silently reading as "empty".
+ */
+export async function slotState(page, index) {
+  return page.evaluate((i) => {
+    const el = document.querySelector('#thumbnail_' + i);
+    if (!el) return { present: false, filled: false, note: 'slot not in DOM' };
+    // Verified against the live DOM: a filled slot carries a FontAwesome
+    // `fa-check` (plus `fa-trash` for removal), an empty one `fa-plus` and
+    // `fa-upload`. Do NOT test the <img> src — an empty slot still renders a
+    // placeholder image from the same CDN, so every slot looks "filled" by that
+    // measure.
+    const icons = [...el.querySelectorAll('i')]
+      .flatMap((n) => String(n.className).match(/fa-[a-z-]+/g) || []);
+    const filled = icons.includes('fa-check');
+    const empty = icons.includes('fa-plus');
+    return { present: true, filled, note: `icons=[${[...new Set(icons)].join(',')}]${filled === empty ? ' (ambiguous)' : ''}` };
+  }, index);
+}
+
 export async function uploadImage(page, index, filePath) {
   // Slots carry stable ids — #thumbnail_0 … #thumbnail_4. Selecting one is what
   // renders the "Upload Photo" widget, and `#upload-image` lives inside that
   // widget: it exists only for the currently selected slot and disappears once
   // that slot holds an image. So the click is mandatory, not a nicety — without
   // it, slot 2 onwards find no file input at all.
-  const slot = page.locator(`#thumbnail_${index}`);
-  await slot.waitFor({ state: 'visible', timeout: 20000 });
-  await slot.scrollIntoViewIfNeeded().catch(() => {});
-  await slot.click();
-  await settle(page, 900);
+  //
+  // WHY this verifies and retries: it used to fire the upload and return without
+  // ever looking at the slot, and the response wait swallowed its own timeout. A
+  // failed upload was therefore indistinguishable from a successful one — a real
+  // listing went out missing the parent's slot 5 and a variant's slot 1 while the
+  // run reported every tab green. Both are boundary positions: the last image
+  // before a tab switch (which is the save), and the first image after the strip
+  // is switched to another variant, where a stale strip means the click lands on
+  // the previous variant's already-filled slot.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const slot = page.locator(`#thumbnail_${index}`);
+    await slot.waitFor({ state: 'visible', timeout: 20000 });
+    await slot.scrollIntoViewIfNeeded().catch(() => {});
+    await slot.click();
+    await settle(page, 900);
 
-  const input = page.locator('#upload-image');
-  await input.waitFor({ state: 'attached', timeout: 20000 });
+    const input = page.locator('#upload-image');
+    const ready = await input
+      .waitFor({ state: 'attached', timeout: 20000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!ready) {
+      // No file input means this slot is not the selected one — usually a strip
+      // that has not re-rendered yet. Give it a beat and drive the slot again.
+      await settle(page, 1500);
+      continue;
+    }
 
-  // Wait for this specific slot's upload to come back before returning.
-  const done = page
-    .waitForResponse((r) => r.url().includes('/napi/scf/uploadImage'), { timeout: 90000 })
-    .catch(() => null);
-  await input.setInputFiles(filePath);
-  await done;
-  await page.waitForTimeout(1500);
+    const done = page
+      .waitForResponse((r) => r.url().includes('/napi/scf/uploadImage'), { timeout: 90000 })
+      .catch(() => null);
+    await input.setInputFiles(filePath);
+    await done;
+    await page.waitForTimeout(1500);
+
+    // Poll rather than trust the response: the tick appears a moment after the
+    // upload call returns, and returning early is what let the following tab
+    // switch save the form before the image had landed.
+    for (let i = 0; i < 10; i++) {
+      const st = await slotState(page, index);
+      if (st.filled) return;
+      await settle(page, 500);
+    }
+  }
+
+  const st = await slotState(page, index);
+  throw new Error(
+    `Image slot ${index + 1} (${IMAGE_SLOTS[index] || 'slot ' + index}) is still empty after ` +
+      `two upload attempts — ${st.note}. File: ${String(filePath).split(/[\/]/).pop()}`,
+  );
 }
 
 /** Count how many image slots show the green "uploaded" tick. */
+/**
+ * Count the slots showing the filled tick.
+ *
+ * The old selector looked for `SuccessTick` / `CheckIcon` classes that do not
+ * exist in this DOM, so this silently returned 0 for every listing ever checked.
+ * The real marker is FontAwesome's `fa-check`.
+ */
 export async function countUploadedImages(page) {
-  return page.evaluate(() => document.querySelectorAll('[class*=SuccessTick], [class*=CheckIcon]').length);
+  return page.evaluate(
+    () => [...document.querySelectorAll('[id^=thumbnail_]')]
+      .filter((el) => [...el.querySelectorAll('i')].some((n) => /fa-check/.test(n.className)))
+      .length,
+  );
 }
 
 // ─── Misc ──────────────────────────────────────────────────────────────────────

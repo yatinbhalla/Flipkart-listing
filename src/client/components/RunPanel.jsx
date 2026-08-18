@@ -47,13 +47,19 @@ export default function RunPanel({ path, running, progress, onStarted }) {
     : [];
   const countsMatch = new Set(photoCounts.map((c) => c.n)).size <= 1;
 
+  // A variant path batches in step: listing i takes the i-th photo from the parent
+  // and from every variant, so all selections must be the same length.
+  const variantCounts = imageVariants.map((v) => (variantImages[v.key] || []).length);
+  const evenSelections =
+    imageVariants.length === 0 || variantCounts.every((n) => n === fronts.length);
+
   const ready =
     fronts.length > 0 &&
     copyReady &&
     path._sharedImagesReady &&
     countsMatch &&
-    imageVariants.every((v) => variantImages[v.key]) &&
-    (batchAllowed || totalListings === 1);
+    evenSelections &&
+    imageVariants.every((v) => (variantImages[v.key] || []).length > 0);
 
   async function upload(files, onDone) {
     setBusy(true);
@@ -127,7 +133,7 @@ export default function RunPanel({ path, running, progress, onStarted }) {
           frontImages: fronts.map((f) => f.path),
           repeat: cycles,
           variantImages: Object.fromEntries(
-            Object.entries(variantImages).map(([k, v]) => [k, v.path]),
+            Object.entries(variantImages).map(([k, imgs]) => [k, (imgs || []).map((i) => i.path)]),
           ),
           sendToQc,
         }),
@@ -149,7 +155,8 @@ export default function RunPanel({ path, running, progress, onStarted }) {
         <p className="mb-3 text-xs text-slate-500">
           {batchAllowed
             ? `Select up to ${MAX_BATCH}. They are listed one after another in a single browser session, each with its own SKU.`
-            : `Each of the ${path.variants.length} variants needs its own Front View, so this path lists one at a time. Pick all ${path.variants.length} below.`}
+            : `Each of the ${path.variants.length} variants needs its own Front View. Pick the same number of photos for every variant — ` +
+              `N photos each produces N listings, every one carrying all ${path.variants.length} variants.`}
         </p>
 
         {!batchAllowed && (
@@ -159,9 +166,10 @@ export default function RunPanel({ path, running, progress, onStarted }) {
           </div>
         )}
 
-        {/* Always multi-select. Gating the `multiple` attribute on the path's variant
-            shape meant a perfectly batchable path could still end up single-pick;
-            the one-at-a-time rule is enforced by validation below instead. */}
+        {/* Multi-select everywhere. A variant path batches like any other — N photos
+            per variant produce N listings, each carrying the full variant set — so
+            the parent picker and the per-variant pickers all take a selection, and
+            the counts simply have to match. */}
         <input
           type="file"
           multiple
@@ -201,18 +209,28 @@ export default function RunPanel({ path, running, progress, onStarted }) {
                 <div className="w-48 shrink-0 text-sm font-medium">{variant.label}</div>
                 <input
                   type="file"
+                  multiple
                   accept={IMAGE_ACCEPT}
                   disabled={busy || running}
                   onChange={(e) =>
-                    e.target.files[0] &&
-                    upload([e.target.files[0]], ([img]) =>
-                      setVariantImages((prev) => ({ ...prev, [variant.key]: img })),
+                    e.target.files.length &&
+                    upload([...e.target.files].slice(0, MAX_BATCH), (imgs) =>
+                      setVariantImages((prev) => ({ ...prev, [variant.key]: imgs })),
                     )
                   }
                   className="text-xs file:mr-2 file:rounded file:border-0 file:bg-slate-100 file:px-2 file:py-1"
                 />
-                {variantImages[variant.key] && (
-                  <span className="text-xs text-emerald-600">✓ {variantImages[variant.key].name}</span>
+                {(variantImages[variant.key] || []).length > 0 && (
+                  <span
+                    className={
+                      (variantImages[variant.key] || []).length === fronts.length
+                        ? 'text-xs text-emerald-600'
+                        : 'text-xs font-semibold text-rose-600'
+                    }
+                  >
+                    ✓ {(variantImages[variant.key] || []).length} image
+                    {(variantImages[variant.key] || []).length > 1 ? 's' : ''}
+                  </span>
                 )}
               </div>
             ))}
@@ -245,13 +263,22 @@ export default function RunPanel({ path, running, progress, onStarted }) {
                 own gallery, so the counts must match before this can run.
               </p>
             )}
+            {!evenSelections && fronts.length > 0 && (
+              <p className="mt-2 text-xs text-rose-600">
+                Pick {fronts.length} photo{fronts.length > 1 ? 's' : ''} for every variant —
+                listing 1 takes the 1st from each, listing 2 the 2nd, and so on. Right now:{' '}
+                {imageVariants
+                  .map((v) => `${v.label || v.key} ${(variantImages[v.key] || []).length}`)
+                  .join(', ')}.
+              </p>
+            )}
           </div>
         )}
 
         {/* Repeat the whole selection. Flipkart accepts multiple listings with the
             same photo, so N images × R cycles produces N×R listings, each with its
             own SKU. */}
-        {fronts.length > 0 && batchAllowed && (
+        {fronts.length > 0 && (
           <div className="mt-4 border-t border-slate-100 pt-3">
             <label className="flex items-center gap-2 text-sm">
               <input

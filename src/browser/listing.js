@@ -284,14 +284,30 @@ export async function fillVariants(
     await V.addVariant(page, v.axis, v.axisValue);
   }
 
-  // BANK THE VARIANTS NOW. Nothing on this tab exists server-side until you leave
-  // it, so a failure later in this function used to discard the variants as well —
-  // every failed draft came back with only the parent, no variants, and therefore
-  // nowhere to attach variant images. Verified by hand on draft WH_P_SET/48895:
-  // creating a variant, switching tabs and returning kept it; failing before the
-  // switch lost it.
+  // Bank the variants before the matrix. A failure while filling ~30 cells per row
+  // used to discard the variants with it, leaving a draft holding only the parent
+  // and nowhere to attach variant images.
+  //
+  // HOW FAR THIS ACTUALLY GETS YOU IS PER-VERTICAL, and the difference is not
+  // obvious from the UI:
+  //   - Hanging Organizers: the tab switch persists. A run that died in the matrix
+  //     still left both variants and their photos on the draft.
+  //   - Blanket: it does NOT. Verified on draft BM_W_BL_TD_SET/17171 — created a
+  //     variant, switched tabs and back (it was still on screen, which is what
+  //     made this look fixed), then RELOADED: gone, and the draft's "Updated On"
+  //     never moved. Only client state survived the tab switch.
+  // Re-check with a reload, never a tab switch, before trusting this on a new
+  // vertical. Persisting a Blanket draft needs "Save & Go Back", which is not
+  // wired up here yet.
   log('Saving variants…');
   await saveVariantTab(page);
+
+  // Report the matrix columns once per run. They differ per vertical and only
+  // exist after a variant is created, so without this the only way to learn a new
+  // vertical's column set is to let a run fail on the first name it cannot find.
+  await F.scrollSection(page, 'bottom');
+  const headers = (await V.readHeaders(page)).filter(Boolean);
+  if (headers.length) log(`Variant matrix columns (${headers.length}): ${headers.join(' | ')}`);
 
   // Images before the matrix, and banked separately. Filling ~38 cells per row is
   // by far the most failure-prone step here, and there is no reason for it to be

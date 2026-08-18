@@ -205,6 +205,32 @@ export async function setCellPickMulti(page, rowIdx, name, values, occurrence = 
 }
 
 /** Multi-value columns use the same pill widget as the main form. */
+/**
+ * Drop a pill that is a strict prefix of the value we are about to enter.
+ *
+ * Only ever removes a genuine stump — a pill equal to the value is left alone, and
+ * so is any pill that is not a prefix of it.
+ */
+async function removePartialPill(page, td, value) {
+  const want = String(value).trim().toLowerCase();
+  const pills = td.locator(PILL);
+  const n = await pills.count().catch(() => 0);
+  for (let i = 0; i < n; i++) {
+    const pill = pills.nth(i);
+    const label = (
+      (await pill.getAttribute('label').catch(() => null)) ||
+      (await pill.innerText().catch(() => '')) ||
+      ''
+    ).trim().toLowerCase();
+    if (!label || label === want) continue;
+    if (!want.startsWith(label)) continue;
+    await pill.locator('[data-testid=suffix-icon]').first().click().catch(() => {});
+    await settle(page, 300);
+    return true;
+  }
+  return false;
+}
+
 export async function setCellPills(page, rowIdx, name, values, occurrence = 0) {
   const list = (Array.isArray(values) ? values : [values]).map((v) => String(v).trim()).filter(Boolean);
   if (!list.length) return;
@@ -261,7 +287,16 @@ export async function setCellPills(page, rowIdx, name, values, occurrence = 0) {
     try {
       await input.fill('');
       for (const value of todo) {
-        await input.type(value, { delay: 12 });
+        // A previous pass can leave a TRUNCATED pill behind: typing character by
+        // character gave the widget time to re-render mid-word, committing only the
+        // prefix. "Lightweight Breathable Muslin Cotton" landed as "Lightweight
+        // Breathable Mu" and then never matched, so the retries could not converge
+        // and the cell failed with the value apparently both present and missing.
+        // Clear the stump before retyping, or it accumulates.
+        await removePartialPill(page, td, value);
+        // fill() sets the whole string in one operation. type() spread 36 characters
+        // over ~430ms, which is the window the re-render truncated.
+        await input.fill(value);
         await input.press(pass % 2 === 0 ? 'Enter' : ',');
         await settle(page, 350);
       }
@@ -325,6 +360,22 @@ export async function countCellPills(page, rowIdx, name, occurrence = 0) {
  * Seating Capacity). Free-text axes have an "Enter New ..." box; enumerated axes
  * (Seating Capacity) have a dropdown. Either way you then press Create.
  */
+/**
+ * Which axes this vertical lets you vary on, read off the Variant tab.
+ *
+ * Each axis renders an "Enter New <Axis>" box or a dropdown beside its label, so
+ * the placeholders are the reliable tell. Blanket additionally gates this whole
+ * tab behind "Fix errors first", so an empty draft shows nothing — which is why
+ * this is reported at run time rather than by the discovery route.
+ */
+export async function readVariantAxes(page) {
+  return page.evaluate(() =>
+    [...document.querySelectorAll('input[placeholder^="Enter New"]')]
+      .map((el) => (el.placeholder || '').replace(/^Enter New\s*/i, '').trim())
+      .filter(Boolean),
+  );
+}
+
 export async function addVariant(page, axis, value) {
   await scrollSection(page, 0);
   const rowLabel = page.locator('text=' + axis).first();
@@ -337,14 +388,41 @@ export async function addVariant(page, axis, value) {
   const textBox = box.locator(`input[placeholder*="Enter New"]`).first();
 
   if (await textBox.count()) {
-    await textBox.fill(String(value));
+    // A free-text axis can be COMPOSITE. Blanket's Brand Color builds one axis
+    // value out of several colours: type the first, press "+" to commit it and
+    // reveal the next box, type the next, then Create — the result reads
+    // "White & Brown". Filling a single box and pressing Create, which is all this
+    // did before, can only ever produce a one-colour variant, so every multi-colour
+    // print silently came out wrong or refused to create at all.
+    //
+    // Verified by hand on draft BM_W_BL_TD_SET/25985: White, "+", Brown, Create.
+    const parts = Array.isArray(value) ? value.map(String) : String(value).split(' & ');
+    for (let i = 0; i < parts.length; i++) {
+      const boxes = box.locator('input[placeholder*="Enter New"]');
+      await boxes.nth(i).fill(parts[i].trim());
+      await settle(page, 300);
+      if (i < parts.length - 1) {
+        // The "+" sits between the filled box and Create. Take the button directly
+        // after this input rather than the first button in the row, which is Create
+        // once at least one value is present.
+        await box.locator('button:not(:has-text("Create"))').nth(i).click();
+        await settle(page, 600);
+      }
+    }
   } else if (await dropdown.count()) {
     await dropdown.click();
     await settle(page, 600);
     const opt = page.locator(`${OPTION}:visible`).filter({ hasText: new RegExp(`^\\s*${value}\\s*$`, 'i') }).first();
     await opt.click();
   } else {
-    throw new Error(`Could not find the "${axis}" variant input.`);
+    // Name the axes this vertical actually offers. Verticals do not share them —
+    // Table Cover has Color / Pack of / Seating Capacity, Hanging Organizers has
+    // only Number of Holders — and `describeFields` never sees this tab, so a bare
+    // "not found" left the real list discoverable only by another run.
+    throw new Error(
+      `Could not find the "${axis}" variant input. ` +
+        `This vertical offers: ${(await readVariantAxes(page)).join(' / ') || '(none visible)'}`,
+    );
   }
   await settle(page, 400);
 
