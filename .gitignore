@@ -25,3 +25,6 @@ data/*.json
 
 # Scratch paths for one-off run images
 f*.txt
+
+# Per-variant Front View photos. Product images stay local, like data/runs.
+data/variant-fronts/

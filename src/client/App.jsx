@@ -5,6 +5,7 @@ import SharedImages from './components/SharedImages.jsx';
 import RunPanel from './components/RunPanel.jsx';
 import CopyPanel from './components/CopyPanel.jsx';
 import SavedImagesBadge from './components/SavedImagesBadge.jsx';
+import { pathLabel } from './pathLabel.js';
 
 export default function App() {
   const { lines, events, clear } = useWebSocket();
@@ -72,7 +73,7 @@ export default function App() {
           className="mb-4 rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
         >
           {paths.map((p) => (
-            <option key={p.id} value={p.id}>{p.name}</option>
+            <option key={p.id} value={p.id}>{pathLabel(p)}</option>
           ))}
         </select>
       )}
