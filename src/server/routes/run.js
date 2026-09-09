@@ -12,6 +12,7 @@ import {
 import { getSession } from '../../browser/session.js';
 import * as L from '../../browser/listing.js';
 import { MAX_BATCH, variantNeedsImage } from '../constants.js';
+import { describeListing, listingSkus } from '../format.js';
 
 export { variantNeedsImage };
 
@@ -309,8 +310,9 @@ router.post('/', async (req, res) => {
           index: i,
           total: fronts.length,
           sku: parent.sku,
+          skus: listingSkus(resolved),
         });
-        log(`── ${label} · ${parent.sku} ──`);
+        log(`── ${label} · ${describeListing(resolved)} ──`);
 
         await L.selectVertical(page, path.vertical, log);
         await L.selectBrand(page, path.brand, log);
@@ -344,8 +346,16 @@ router.post('/', async (req, res) => {
           log(`${label}: draft complete — not submitted (QC opt-in is off).`);
         }
 
-        done.push(parent.sku);
-        broadcast({ type: 'event', event: 'item-done', index: i, sku: parent.sku, ok: true });
+        done.push({ sku: parent.sku, text: describeListing(resolved), skus: listingSkus(resolved) });
+        log(`${label} done: ${describeListing(resolved)}`);
+        broadcast({
+          type: 'event',
+          event: 'item-done',
+          index: i,
+          sku: parent.sku,
+          skus: listingSkus(resolved),
+          ok: true,
+        });
       } catch (err) {
         // One bad listing should not abandon the other 49.
         failed.push({ index: i, error: err.message });
@@ -358,8 +368,10 @@ router.post('/', async (req, res) => {
     broadcast({
       type: failed.length ? 'error' : 'success',
       text: sendToQc
-        ? `Batch finished — ${summary}. Sent to QC: ${done.join(', ') || 'none'}`
-        : `Batch finished — ${summary}. Drafts left for review in the browser.`,
+        ? `Batch finished — ${summary}. Sent to QC: ${done.map((d) => d.text).join(', ') || 'none'}`
+        : `Batch finished — ${summary}. Drafts left for review: ${
+            done.map((d) => d.text).join(', ') || 'none'
+          }`,
     });
   } catch (err) {
     fail(err.message);
