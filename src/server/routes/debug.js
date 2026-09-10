@@ -367,4 +367,129 @@ router.get('/page', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/debug/cell?row=1&col=Gift Pack — why one matrix cell will not take a click.
+ *
+ * The matrix is ~54 columns wide and scrolls horizontally inside its own wrapper,
+ * so a cell can be present, non-empty and still be nowhere near the viewport. This
+ * reports the cell's box, its dropdown button's box, what `elementFromPoint` finds
+ * at that button's centre, and the scroll state of the wrapper that would have to
+ * move for the click to land.
+ */
+router.get('/cell', async (req, res) => {
+  try {
+    const { page } = await getSession(() => {});
+    const rowIdx = Number(req.query.row || 1);
+    const want = String(req.query.col || '');
+    const probe = req.query.probe === '1';
+    // ?collapse=1 folds the Variant Issues sidebar away first, with a REAL click —
+    // the same thing variants.js collapseErrorSidebar does during a run.
+    if (req.query.collapse === '1') {
+      const toggle = page.locator('[class*=ProductErrorToggleButton]').first();
+      if (await toggle.count()) {
+        await toggle.click({ timeout: 5000 }).catch(() => {});
+        await page.waitForTimeout(800);
+      }
+    }
+    const out = await page.evaluate(
+      ({ rowIdx, want, probe }) => {
+        const table = document.querySelector('table');
+        if (!table) return { error: 'no table on page' };
+        const headers = [...table.querySelectorAll('th')].map((th) =>
+          (th.innerText || '').replace(/\*/g, '').trim(),
+        );
+        const col = headers.findIndex((h) => h.toLowerCase() === want.trim().toLowerCase());
+        if (col === -1) return { error: `no column "${want}"`, headers: headers.filter(Boolean) };
+        const row = document.querySelectorAll('table tbody tr')[rowIdx];
+        const td = row?.children[col];
+        if (!td) return { error: `no cell at row ${rowIdx} col ${col}` };
+
+        const box = (el) => {
+          if (!el) return null;
+          const r = el.getBoundingClientRect();
+          return {
+            x: Math.round(r.x), y: Math.round(r.y),
+            w: Math.round(r.width), h: Math.round(r.height),
+            inViewport: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight,
+          };
+        };
+
+        // The nearest ancestor that actually scrolls sideways.
+        let scroller = null;
+        for (let n = td.parentElement; n && n !== document.body; n = n.parentElement) {
+          if (n.scrollWidth > n.clientWidth + 4) { scroller = n; break; }
+        }
+
+        // ?probe=1 performs the centering scroll first, so the before/after numbers
+        // show whether the cell is reachable at all.
+        // ?probe=1 centres the cell in every scrollable ancestor, then reports what
+        // is really at the click point — and, if something covers it, what that thing
+        // is and whether scrolling the cell to the top of the viewport clears it.
+        const probeOut = {};
+        if (probe) {
+          const btn = () => td.querySelector('button[class*=DropdownButton]');
+          const hit = () => {
+            const b = btn();
+            if (!b) return null;
+            const r = b.getBoundingClientRect();
+            const el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+            if (!el) return { at: null, isSelf: false, buttonY: Math.round(r.y) };
+            const s2 = getComputedStyle(el);
+            const rr = el.getBoundingClientRect();
+            return {
+              at: `${el.tagName}.${String(el.className || '').slice(0, 45)}`,
+              isSelf: el === b || b.contains(el),
+              buttonY: Math.round(r.y),
+              coverRect: { x: Math.round(rr.x), y: Math.round(rr.y), w: Math.round(rr.width), h: Math.round(rr.height) },
+              coverPos: s2.position,
+              coverZ: s2.zIndex,
+            };
+          };
+          td.scrollIntoView({ block: 'center', inline: 'center' });
+          probeOut.centred = hit();
+          if (probeOut.centred && !probeOut.centred.isSelf) {
+            td.scrollIntoView({ block: 'start', inline: 'center' });
+            probeOut.topAligned = hit();
+            td.scrollIntoView({ block: 'end', inline: 'center' });
+            probeOut.bottomAligned = hit();
+          }
+        }
+
+        const button = td.querySelector('button[class*=DropdownButton]');
+        const bbox = box(button);
+        let at = null;
+        if (bbox && bbox.w && bbox.h) {
+          const el = document.elementFromPoint(bbox.x + bbox.w / 2, bbox.y + bbox.h / 2);
+          at = el
+            ? { tag: el.tagName, cls: String(el.className || '').slice(0, 60), isSelf: el === button || button.contains(el) }
+            : null;
+        }
+
+        return {
+          column: headers[col], colIndex: col, columns: headers.length,
+          cellId: td.querySelector('[id^=variant-cell-]')?.id || null,
+          cell: box(td),
+          button: bbox,
+          buttonText: (button?.innerText || '').trim() || null,
+          elementAtButtonCentre: at,
+          probeOut,
+          viewport: { w: innerWidth, h: innerHeight },
+          scroller: scroller
+            ? {
+                cls: String(scroller.className || '').slice(0, 60),
+                scrollLeft: Math.round(scroller.scrollLeft),
+                scrollWidth: Math.round(scroller.scrollWidth),
+                clientWidth: Math.round(scroller.clientWidth),
+              }
+            : null,
+        };
+      },
+      { rowIdx, want, probe },
+    );
+    res.json(out);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;

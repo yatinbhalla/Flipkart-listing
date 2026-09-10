@@ -339,6 +339,13 @@ export async function fillVariants(
 
   await F.scrollSection(page, 'bottom');
 
+  // Collapse the Variant Issues sidebar before touching the matrix. It is a layout
+  // column, not an overlay: it covers the right-hand ~253px of the table wrapper, and
+  // the table cannot scroll far enough to bring its last columns out from under it.
+  // The cell helpers collapse it too, but doing it once up front means the whole row
+  // is filled against a full-width table.
+  if (await V.collapseErrorSidebar(page)) log('  · collapsed the Variant Issues sidebar');
+
   for (let i = 1; i < variants.length; i++) {
     const v = variants[i];
     log(`Filling variant row ${i} (${v.label})…`);
@@ -386,6 +393,11 @@ async function fillVariantRowFromMap(page, i, v, columns, log) {
       skipped.push(col.label);
       continue;
     }
+    // Name every cell as it is entered. Without this a stalled row is a silent
+    // 20-minute gap in the log and the only way to find the column it died on is to
+    // interrogate the live page afterwards — which is how Country Of Origin cost an
+    // entire run to identify.
+    log(`    · ${col.label}${at ? ` (#${at + 1})` : ''}`);
     switch (col.type) {
       case 'dropdown':
         await V.setCellPick(page, i, col.label, value, at);

@@ -49,30 +49,58 @@ async function aiRecovery({ page, intent, near, scope }) {
  */
 async function rowFor(page, label, occurrence = 0) {
   const token = 'fkq' + Math.random().toString(36).slice(2, 10);
-  const found = await page.evaluate(
-    ({ label, token, occurrence, LABEL, NAME_WRAP, PANEL }) => {
-      const panel = document.querySelector(PANEL);
-      if (!panel) return false;
-      const want = label.trim().toLowerCase();
-      let seen = 0;
-      for (const el of panel.querySelectorAll(LABEL)) {
-        // Labels carry a trailing "*" for mandatory fields — ignore it when matching.
-        const text = (el.innerText || '').replace(/\*/g, '').trim().toLowerCase();
-        if (text !== want) continue;
-        const wrap = el.closest(NAME_WRAP);
-        const row = wrap?.parentElement;
-        if (!row) continue;
-        // "Color" appears twice on the Product Description tab: a free-text pill
-        // field and a dropdown refiner. Callers disambiguate with `occurrence`.
-        if (seen++ !== occurrence) continue;
-        row.setAttribute('data-fkq', token);
-        return true;
-      }
-      return false;
-    },
-    { label, token, occurrence, LABEL, NAME_WRAP, PANEL },
-  );
-  if (!found) throw new Error(`Field not found on this tab: "${label}"${occurrence ? ` (occurrence ${occurrence})` : ''}`);
+
+  // Poll rather than ask once. A tab switch renders its panel asynchronously, and on
+  // a COLD browser the first field lookup can beat the render — a fresh Chromium threw
+  // `Field not found on this tab: "Model Number"` in the same second it opened Product
+  // Description, while the identical run against a warm session had filled it fine.
+  // Same lesson as openMenu: wait for the thing, do not guess how long it takes.
+  const deadline = Date.now() + 20000;
+  let found = false;
+  do {
+    found = await page.evaluate(
+      ({ label, token, occurrence, LABEL, NAME_WRAP, PANEL }) => {
+        const panel = document.querySelector(PANEL);
+        if (!panel) return false;
+        const want = label.trim().toLowerCase();
+        let seen = 0;
+        for (const el of panel.querySelectorAll(LABEL)) {
+          // Labels carry a trailing "*" for mandatory fields — ignore it when matching.
+          const text = (el.innerText || '').replace(/\*/g, '').trim().toLowerCase();
+          if (text !== want) continue;
+          const wrap = el.closest(NAME_WRAP);
+          const row = wrap?.parentElement;
+          if (!row) continue;
+          // "Color" appears twice on the Product Description tab: a free-text pill
+          // field and a dropdown refiner. Callers disambiguate with `occurrence`.
+          if (seen++ !== occurrence) continue;
+          row.setAttribute('data-fkq', token);
+          return true;
+        }
+        return false;
+      },
+      { label, token, occurrence, LABEL, NAME_WRAP, PANEL },
+    );
+    if (found) break;
+    await settle(page, 500);
+  } while (Date.now() < deadline);
+  if (!found) {
+    // List what the tab does hold. "Not found" alone cannot distinguish a renamed
+    // field from a panel that never rendered, and those need opposite fixes.
+    const present = await page
+      .evaluate(
+        ({ LABEL, PANEL }) =>
+          [...(document.querySelector(PANEL)?.querySelectorAll(LABEL) || [])]
+            .map((el) => (el.innerText || '').replace(/\*/g, '').trim())
+            .filter(Boolean),
+        { LABEL, PANEL },
+      )
+      .catch(() => []);
+    throw new Error(
+      `Field not found on this tab: "${label}"${occurrence ? ` (occurrence ${occurrence})` : ''}. ` +
+        `This tab shows ${present.length} field(s)${present.length ? ': ' + present.slice(0, 20).join(' | ') : ' — the panel had not rendered'}.`,
+    );
+  }
 
   const row = page.locator(`[data-fkq="${token}"]`);
   await row.scrollIntoViewIfNeeded().catch(() => {});
@@ -767,4 +795,4 @@ function escapeRe(s) {
   return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-export { SECTION, PANEL, DROPDOWN, OPTION, PILL, rowFor };
+export { SECTION, PANEL, DROPDOWN, OPTION, PILL, rowFor, closeMenu, clickEmptySpace };

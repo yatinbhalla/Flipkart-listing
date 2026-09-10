@@ -9,7 +9,7 @@
  * across every variant.
  */
 
-import { OPTION, PILL, scrollSection } from './form.js';
+import { DROPDOWN, OPTION, PILL, clickEmptySpace, closeMenu, scrollSection } from './form.js';
 
 const settle = (page, ms = 400) => page.waitForTimeout(ms);
 
@@ -75,8 +75,85 @@ async function cell(page, rowIdx, name, occurrence = 0) {
   if (!ok) throw new Error(`Variant cell not found: row ${rowIdx}, column "${name}"`);
 
   const loc = page.locator(`[data-fkv="${token}"]`);
-  await loc.scrollIntoViewIfNeeded().catch(() => {});
+  // Centre rather than minimal-scroll — see bringCellIntoView.
+  await loc.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'center' })).catch(() => {});
   return loc;
+}
+
+/**
+ * Collapse Flipkart's "Variant Issues" sidebar.
+ *
+ * WHY this is not an overlay problem and dismissOverlays cannot help: the panel is
+ * `position: static` with no z-index — it is a ~253px LAYOUT COLUMN pinned to the
+ * right of the matrix, and the table's scroll wrapper runs underneath it. Measured
+ * on a live draft (viewport 1366): the wrapper spans x=123..1366 with clientWidth
+ * 1243, the sidebar covers x=1103..1356, and the matrix is 11127px wide. Scrolled
+ * hard right (scrollLeft 9884, the maximum) the LAST column lands at x=1122..1310 —
+ * entirely beneath the sidebar, and no scroll position can free it because there is
+ * no scroll left to give. `elementFromPoint` on its dropdown returns
+ * ProductErrorSidebarBody, so the click never reaches the button.
+ *
+ * That single fact explains both symptoms: "Gift Pack dropdown would not open"
+ * (column 53 of 54), and pill cells near the right edge taking exactly one value —
+ * clickEmptySpace finds no point whose topmost element is the widget, so it falls
+ * back to a container click that lands on the sidebar instead.
+ *
+ * The sidebar shows up the moment a row has errors, which is the entire time a row
+ * is being filled ("SKU ID cannot be empty" is there until the SKU goes in), so
+ * this is the normal state during a run, not an edge case. Its header carries a
+ * collapse toggle; clicking that hands the width back to the table.
+ */
+export async function collapseErrorSidebar(page) {
+  const body = page.locator('[class*=ProductErrorSidebarBody]').first();
+  if (!(await body.isVisible().catch(() => false))) return false; // absent or already collapsed
+  const toggle = page.locator('[class*=ProductErrorToggleButton]').first();
+  if (!(await toggle.count())) return false;
+  await toggle.click({ timeout: 5000 }).catch(() => {});
+  await settle(page, 600);
+  return !(await body.isVisible().catch(() => false));
+}
+
+/**
+ * Centre a cell in every scroller that holds it.
+ *
+ * `scrollIntoViewIfNeeded` does the MINIMUM scroll, which parks a far-right column
+ * hard against the wrapper's right edge — the exact strip the error sidebar covers.
+ * `scrollIntoView({block:'center', inline:'center'})` moves both the form's vertical
+ * scroller and the table's horizontal one in one call, and centring leaves margin on
+ * both sides instead of landing on the boundary.
+ */
+async function bringCellIntoView(td) {
+  await td.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'center' })).catch(() => {});
+}
+
+/** Does this control's own centre point actually belong to it, or is something over it? */
+async function pointIsClear(button) {
+  return button
+    .evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) return false;
+      const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return Boolean(at && (at === el || el.contains(at)));
+    })
+    .catch(() => false);
+}
+
+/** What a cell actually holds — for failures where the control is not what we assumed. */
+async function describeCell(td, dropdown) {
+  return td
+    .evaluate((el, sel) => {
+      const kind = el.querySelector('.rti--container')
+        ? 'pills'
+        : el.querySelector(sel)
+          ? 'dropdown'
+          : el.querySelector('textarea')
+            ? 'textarea'
+            : el.querySelector('input:not([type=hidden])')
+              ? 'input'
+              : 'no control';
+      return `${kind}, reading "${(el.innerText || '').trim().slice(0, 40)}"`;
+    }, dropdown)
+    .catch(() => '(unreadable)');
 }
 
 /**
@@ -88,40 +165,122 @@ async function cell(page, rowIdx, name, occurrence = 0) {
  * that window opens nothing. The symptom is a menu with zero options and an error
  * reading `Available: ` with nothing after it, which looks like a bad option value
  * rather than a menu that never opened.
+ *
+ * WHY it polls for the options instead of sleeping, and why every failed attempt
+ * closes the menu before the next one: this used to click, sleep 700ms, then count.
+ * The matrix renders its option list asynchronously and slower than the main form
+ * does — late in a ~35 column row it regularly needs longer than that — so the
+ * count came back 0 on a menu that was in fact opening, and the next attempt
+ * clicked the SAME button again, which toggles an open menu shut. Three attempts
+ * alternating open/shut can never see an option, which is how Gift Pack failed with
+ * "would not open" on a cell that opens perfectly by hand. form.js `openMenu`
+ * already had the answer for the main form: wait for an option to become visible
+ * rather than guessing how long the render takes.
  */
 async function openCellMenu(page, td, name) {
   const options = page.locator(`${OPTION}:visible`);
+  let why = '';
   for (let attempt = 0; attempt < 3; attempt++) {
     // Close whatever is already open BEFORE clicking. The option locator is global,
     // so a menu left behind by the previous column still counts as "options are
     // visible" — the caller then searches that stale list and reports a perfectly
     // valid value as missing. That is exactly how "Flipkart" went missing from
     // Shipping provider on a column that had worked the run before.
-    if (await options.count()) {
-      await page.keyboard.press('Escape').catch(() => {});
+    //
+    // Escape on its own is not enough: it is not always wired up, which is why the
+    // main form's closeMenu falls back to clicking a neutral spot. Reuse it here.
+    if (await options.count()) await closeMenu(page);
+
+    // The Variant Issues sidebar covers the right-hand columns outright, and it is
+    // open for most of a fill. Collapse it before deciding a cell cannot be clicked.
+    await collapseErrorSidebar(page);
+    await bringCellIntoView(td);
+
+    // An absent button is not proof the column is not a dropdown — some matrix
+    // cells render their control only once the cell itself has been clicked.
+    let button = td.locator(DROPDOWN).first();
+    if (!(await button.count())) {
+      await td.click({ timeout: 5000 }).catch(() => {});
       await settle(page, 400);
+      button = td.locator(DROPDOWN).first();
     }
-    await td.scrollIntoViewIfNeeded().catch(() => {});
-    await td.locator('button[class*=DropdownButton]').first().click().catch(() => {});
-    await settle(page, 700);
-    if (await options.count()) return true;
+
+    if (await button.count()) {
+      // A real mouse click goes to whatever sits on top of the point, so check the
+      // point first. When it is covered, activate from the keyboard instead: focus
+      // plus Enter produces a trusted click on a <button> with no hit testing at
+      // all, which is the one route an occluding element cannot block. (A
+      // programmatic element.click() is NOT a substitute — Flipkart's React
+      // buttons ignore it.)
+      if (await pointIsClear(button)) {
+        // Bounded: on the default 30s timeout an unreachable cell becomes a 90s
+        // silent hang across three attempts, with the reason swallowed too.
+        await button.click({ timeout: 5000 }).catch((err) => {
+          why = String(err.message).split('\n')[0];
+        });
+      } else {
+        why = 'click point is covered by another element — activated from the keyboard';
+        await button.focus().catch(() => {});
+        await button.press('Enter').catch(() => {
+          why = 'click point is covered, and keyboard activation failed too';
+        });
+      }
+      const appeared = await options
+        .first()
+        .waitFor({ state: 'visible', timeout: 6000 })
+        .then(() => true)
+        .catch(() => false);
+      if (appeared) return true;
+      if (!why) why = 'clicked, but no options rendered within 6s';
+    } else {
+      why = 'the cell has no dropdown button, even after clicking the cell';
+    }
+
+    // Nothing usable came up. Close deliberately so the next attempt starts from a
+    // known-shut menu instead of toggling a slow one back down.
+    await closeMenu(page);
   }
-  throw new Error(`Variant column "${name}" dropdown would not open after 3 attempts.`);
+  throw new Error(
+    `Variant column "${name}" dropdown would not open after 3 attempts ` +
+      `(${why || 'no options rendered'}). Cell holds: ${await describeCell(td, DROPDOWN)}.`,
+  );
 }
 
 export async function setCellText(page, rowIdx, name, value, occurrence = 0) {
   if (value === undefined || value === null || value === '') return;
-  const td = await cell(page, rowIdx, name, occurrence);
-  const input = td.locator('input:not([type=hidden]), textarea').first();
-  // Name the column in the failure. A bare Playwright timeout quoting an internal
-  // data-fkv token says nothing about which of ~35 columns went wrong.
-  await input.fill(String(value)).catch((err) => {
-    throw new Error(
-      `Could not type into variant column "${name}"${occurrence ? ` (#${occurrence + 1})` : ''} ` +
-        `on row ${rowIdx}: ${String(err.message).split('\n')[0]}`,
-    );
-  });
-  await settle(page, 300);
+  const want = String(value);
+
+  // Three tries, because the matrix is documented to swallow a value it has just
+  // accepted: Procurement SLA, Stock and the package L/B/H/Weight have all come back
+  // EMPTY after a fill. Read the cell back rather than trusting the write.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const td = await cell(page, rowIdx, name, occurrence);
+    const input = td.locator('input:not([type=hidden]), textarea').first();
+    // Name the column in the failure. A bare Playwright timeout quoting an internal
+    // data-fkv token says nothing about which of ~54 columns went wrong.
+    await input.fill(want).catch((err) => {
+      throw new Error(
+        `Could not type into variant column "${name}"${occurrence ? ` (#${occurrence + 1})` : ''} ` +
+          `on row ${rowIdx}: ${String(err.message).split('\n')[0]}`,
+      );
+    });
+    await settle(page, 300);
+
+    // ONLY an empty read-back is retried. An earlier version also retried anything
+    // that looked truncated, on the strength of a Seller SKU ID that seemed to lose
+    // its "/28762" — which turned out to be the /api/debug/variantrow route previewing
+    // values with slice(0, 14), not a defect at all. Treating a short read as
+    // truncation would fail any cell Flipkart legitimately caps, the long Description
+    // first, and would loop on any widget that reformats what it is given.
+    const got = (await input.inputValue().catch(() => want)) || '';
+    if (got !== '') return;
+    if (attempt === 2) {
+      throw new Error(
+        `Variant column "${name}" came back empty on row ${rowIdx} after three tries ` +
+          `(typed "${want}").`,
+      );
+    }
+  }
 }
 
 export async function readCellText(page, rowIdx, name, occurrence = 0) {
@@ -129,6 +288,44 @@ export async function readCellText(page, rowIdx, name, occurrence = 0) {
   const input = td.locator('input:not([type=hidden]), textarea').first();
   if (!(await input.count())) return '';
   return (await input.inputValue().catch(() => '')) || '';
+}
+
+/**
+ * Every visible option label, in ONE round trip.
+ *
+ * WHY not `visible.nth(i).innerText()` in a loop: that is one protocol call per
+ * option and the locator is GLOBAL, so it sees every rendered menu on the page.
+ * Country Of Origin carries 248 entries — a single miss meant hundreds of round
+ * trips, and a run went silent on that one cell for 22 minutes.
+ */
+async function optionLabels(page) {
+  return page
+    .locator(`${OPTION}:visible`)
+    .evaluateAll((els) => els.map((e) => (e.innerText || '').trim()))
+    .catch(() => []);
+}
+
+/**
+ * Index of the wanted option, narrowing a long list through its search box first.
+ *
+ * Long lists render a search box and only a SLICE of their options, so scanning
+ * whatever happens to be rendered can miss a perfectly valid value — Country Of
+ * Origin is the case. form.js `pick` has typed into that box all along; the matrix
+ * twin never learned to, which is why "India" was unreachable here and fine there.
+ */
+async function findOption(page, want, raw) {
+  let labels = await optionLabels(page);
+  let idx = labels.findIndex((t) => t.toLowerCase() === want);
+  if (idx !== -1) return idx;
+
+  const search = page.locator('input[placeholder="Select"]:visible').first();
+  if (await search.count()) {
+    await search.fill(String(raw));
+    await settle(page, 700);
+    labels = await optionLabels(page);
+    idx = labels.findIndex((t) => t.toLowerCase() === want);
+  }
+  return idx;
 }
 
 /**
@@ -142,25 +339,17 @@ export async function setCellPick(page, rowIdx, name, optionText, occurrence = 0
   const td = await cell(page, rowIdx, name, occurrence);
   await openCellMenu(page, td, name);
 
-  const want = String(optionText).trim().toLowerCase();
-  const visible = page.locator(`${OPTION}:visible`);
-  const count = await visible.count();
-  for (let i = 0; i < count; i++) {
-    const el = visible.nth(i);
-    const text = ((await el.innerText().catch(() => '')) || '').trim().toLowerCase();
-    if (text === want) {
-      await el.click();
-      await settle(page, 500);
-      return;
-    }
+  const idx = await findOption(page, String(optionText).trim().toLowerCase(), optionText);
+  if (idx !== -1) {
+    await page.locator(`${OPTION}:visible`).nth(idx).click();
+    await settle(page, 500);
+    return;
   }
-  const seen = [];
-  for (let i = 0; i < Math.min(count, 30); i++) {
-    seen.push(((await visible.nth(i).innerText().catch(() => '')) || '').trim());
-  }
+  const labels = await optionLabels(page);
   await page.keyboard.press('Escape').catch(() => {});
   throw new Error(
-    `Variant option "${optionText}" not found for column "${name}". Available: ${seen.join(' / ')}`,
+    `Variant option "${optionText}" not found for column "${name}". ` +
+      `Available: ${labels.slice(0, 30).join(' / ')}`,
   );
 }
 
@@ -180,25 +369,17 @@ export async function setCellPickMulti(page, rowIdx, name, values, occurrence = 
   await openCellMenu(page, td, name);
 
   for (const value of list) {
-    const want = value.toLowerCase();
-    const visible = page.locator(`${OPTION}:visible`);
-    const count = await visible.count();
-    let hit = false;
-    for (let i = 0; i < count; i++) {
-      const el = visible.nth(i);
-      const text = ((await el.innerText().catch(() => '')) || '').trim().toLowerCase();
-      if (text === want) { await el.click(); await settle(page, 350); hit = true; break; }
-    }
-    if (!hit) {
-      const seen = [];
-      for (let i = 0; i < Math.min(count, 30); i++) {
-        seen.push(((await visible.nth(i).innerText().catch(() => '')) || '').trim());
-      }
+    const idx = await findOption(page, value.toLowerCase(), value);
+    if (idx === -1) {
+      const labels = await optionLabels(page);
       await page.keyboard.press('Escape').catch(() => {});
       throw new Error(
-        `Variant option "${value}" not found for column "${name}". Available: ${seen.join(' / ')}`,
+        `Variant option "${value}" not found for column "${name}". ` +
+          `Available: ${labels.slice(0, 30).join(' / ')}`,
       );
     }
+    await page.locator(`${OPTION}:visible`).nth(idx).click();
+    await settle(page, 350);
   }
   await page.keyboard.press('Escape').catch(() => {});
   await settle(page, 300);
@@ -238,6 +419,11 @@ export async function setCellPills(page, rowIdx, name, values, occurrence = 0) {
   // swallows the container click, so clear it before touching this cell.
   await page.keyboard.press('Escape').catch(() => {});
   await settle(page, 250);
+  // Same reason as openCellMenu: with the sidebar open, clickEmptySpace can find
+  // no point inside a right-hand cell whose topmost element is the widget, so it
+  // falls back to a container click that lands on the sidebar and the input never
+  // appears.
+  await collapseErrorSidebar(page);
 
   const td = await cell(page, rowIdx, name, occurrence);
   const container = td.locator('.rti--container').first();
@@ -260,49 +446,80 @@ export async function setCellPills(page, rowIdx, name, values, occurrence = 0) {
     return list.filter((v) => !have.has(v.toLowerCase()));
   };
 
-  // WHY one focused burst per pass instead of a click before every value: the
-  // container click is itself the race. Committing a pill re-renders the widget, so
-  // clicking again immediately lands mid-render and the keystrokes go nowhere — that
-  // is how "Dusty Pink" vanished from the middle of three, and how Key Features kept
-  // only its first of seven. Typing straight into the still-focused input avoids the
-  // re-click entirely, and whatever slips through is picked up by the next pass.
+  /**
+   * Bring the widget's text input back, and hand it over.
+   *
+   * WHY it cannot just click the container: committing a pill REMOVES the input
+   * from the DOM, and `container.click()` targets the container's centre — which,
+   * the moment the cell holds even one chip, is the chip. Clicking a chip selects
+   * or removes it and never reveals the input, so exactly one value ever went in
+   * and every later value was reported as refused. That is precisely what Key
+   * Features and Care Instructions did: "Cell holds: fits 6 seater tables" with the
+   * remaining seven rejected.
+   *
+   * form.js `setPills` already solved this for the main form with `clickEmptySpace`,
+   * which computes a point inside the widget that no chip covers. Same widget, same
+   * fix — reuse it rather than keeping a second, weaker copy here.
+   */
+  const revealInput = async () => {
+    const input = td.locator('.rti--input').first();
+    if (await input.isVisible().catch(() => false)) return input;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await container.scrollIntoViewIfNeeded().catch(() => {});
+      await clickEmptySpace(page, container);
+      const ok = await input
+        .waitFor({ state: 'visible', timeout: 8000 })
+        .then(() => true)
+        .catch(() => false);
+      if (ok) return input;
+    }
+    return null;
+  };
+
+  // WHY the input is re-checked before EVERY value rather than once per pass: the
+  // matrix widget drops its input after each commit, so a burst typed into one
+  // locator lands only its first value and the rest throw into the void. The pass
+  // loop then had to supply one value per pass, and a seven-value Key Features
+  // cell can never finish in four passes. Reveal per value, and the passes are
+  // left to do what they are actually for — retrying truncated stumps and
+  // alternating the commit key.
   //
   // The widget's own helper text says Enter OR comma commits, so alternate: if Enter
   // is being swallowed on this render, comma usually is not.
-  for (let pass = 0; pass < 4; pass++) {
+  // A wall-clock budget. Four passes over ten values, each burning reveal timeouts,
+  // is ~17 minutes of grinding with nothing logged — which is indistinguishable from
+  // a hang, and is exactly how a stalled cell looked from outside. Give up loudly.
+  const deadline = Date.now() + 60000;
+  for (let pass = 0; pass < 4 && Date.now() < deadline; pass++) {
     const todo = await outstanding();
     if (!todo.length) return;
 
-    await container.click().catch(() => {});
-    const input = td.locator('.rti--input').first();
-    const ready = await input
-      .waitFor({ state: 'visible', timeout: 5000 })
-      .then(() => true)
-      .catch(() => false);
-    if (!ready) {
-      await settle(page, 700);
-      continue;
-    }
+    for (const value of todo) {
+      if (Date.now() > deadline) break;
+      // A previous pass can leave a TRUNCATED pill behind: typing character by
+      // character gave the widget time to re-render mid-word, committing only the
+      // prefix. "Lightweight Breathable Muslin Cotton" landed as "Lightweight
+      // Breathable Mu" and then never matched, so the retries could not converge
+      // and the cell failed with the value apparently both present and missing.
+      // Clear the stump BEFORE reaching for the input — removing a pill re-renders
+      // the widget and would invalidate an input fetched first.
+      await removePartialPill(page, td, value);
 
-    try {
-      await input.fill('');
-      for (const value of todo) {
-        // A previous pass can leave a TRUNCATED pill behind: typing character by
-        // character gave the widget time to re-render mid-word, committing only the
-        // prefix. "Lightweight Breathable Muslin Cotton" landed as "Lightweight
-        // Breathable Mu" and then never matched, so the retries could not converge
-        // and the cell failed with the value apparently both present and missing.
-        // Clear the stump before retyping, or it accumulates.
-        await removePartialPill(page, td, value);
+      const input = await revealInput();
+      // Give up on this pass rather than this cell: the next pass re-reads what
+      // actually committed and retries only what is genuinely missing.
+      if (!input) break;
+
+      try {
         // fill() sets the whole string in one operation. type() spread 36 characters
         // over ~430ms, which is the window the re-render truncated.
         await input.fill(value);
         await input.press(pass % 2 === 0 ? 'Enter' : ',');
         await settle(page, 350);
+      } catch {
+        // The input was torn out mid-write. Whatever committed still counts.
+        break;
       }
-    } catch {
-      // The input was torn out mid-burst. Whatever committed still counts; the
-      // next pass re-reads the cell and retypes only what is genuinely missing.
     }
     await settle(page, 800);
   }

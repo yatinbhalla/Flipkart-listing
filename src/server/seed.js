@@ -27,7 +27,7 @@ export const seedPath = {
     fullfilmentBy: 'Seller',
     procurementType: 'express',
     // NOTE: with procurement type = express, Flipkart reads this as HOURS, not days.
-    procurementSla: '2',
+    procurementSla: '1',
     stock: '1000',
     shippingProvider: 'Flipkart',
     hsn: '392410',
