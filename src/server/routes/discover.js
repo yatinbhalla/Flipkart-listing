@@ -40,8 +40,14 @@ router.post('/', async (req, res) => {
       const fields = await F.describeFields(page);
 
       if (options) {
+        // EVERY dropdown, not just the mandatory ones. This read used to skip
+        // optional dropdowns, on the assumption that a field map only ever drives
+        // mandatory ones — which stopped being true the moment we started filling
+        // the optional attributes too. A dropdown cannot be filled without its
+        // option list (you can only click a label Flipkart already offers), so
+        // skipping them left exactly the fields we now need undocumented.
         for (const field of fields) {
-          if (field.type !== 'dropdown' || !field.mandatory) continue;
+          if (field.type !== 'dropdown') continue;
           field.options = await F.readOptions(page, field.label).catch(() => []);
 
           // The first option tells you the arity: "Select All" heads a

@@ -57,6 +57,24 @@ export const seedPath = {
       'Do not iron',
       'Dry in shade',
     ],
+
+    // Attributes that used to be skipped outright. A PVC sheet is extruded
+    // plastic, so it has no thread count to state and carries no character print —
+    // these are genuine "not applicable", not missing measurements. EAN/UPC and
+    // Video URL stay absent: there is no barcode and no video, and a placeholder in
+    // either would be a wrong value rather than an empty one.
+    character: ['Not Applicable'],
+    threadCount: 'Not Applicable',
+    otherFeatures: [
+      'Waterproof surface',
+      'Wipes clean with a damp cloth',
+      'Protects the table from spills, stains and scratches',
+      'Lightweight and easy to roll up for storage',
+    ],
+    warrantySummary: 'Not Applicable',
+    warrantyServiceType: 'Not Applicable',
+    coveredInWarranty: 'Not Applicable',
+    notCoveredInWarranty: 'Not Applicable',
   },
 
   variants: [

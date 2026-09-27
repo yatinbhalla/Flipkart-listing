@@ -107,5 +107,11 @@ Dry in shade
 | Length | `60` (inch) |
 | Thickness | `3` (mm) — **flagged: inconsistent with 200 g weight, likely 0.3** |
 | Weight | `200` (g) |
-| Warranty section (all 6 fields) | skip |
-| EAN/UPC, Character, Thread Count, Video URL, Other Dimensions, Other Features | skip |
+| Character | `Not Applicable` — no licensed or cartoon print on these covers |
+| Thread Count | `Not Applicable` on PVC (extruded sheet, no threads). Cotton net covers DO have one — seller to supply |
+| Other Dimensions | derived at run time from the variant size, e.g. `Cover size: 40 x 60 inch` |
+| Other Features | `Waterproof surface` / `Wipes clean with a damp cloth` / `Protects the table from spills, stains and scratches` / `Lightweight and easy to roll up for storage` (PVC wording; the net covers carry their own) |
+| Warranty Summary, Warranty Service Type, Covered in Warranty, Not Covered in Warranty | `Not Applicable` |
+| Domestic Warranty, International Warranty | **left blank** — these are warranty UNIT dropdowns offering only `Year` / `Months`. Neither means "none", so picking one would assert a warranty that does not exist |
+| EAN/UPC | **left blank** — no GTIN on these products, and a made-up barcode can collide with a real one |
+| Video URL | **left blank** — a URL field with no video to point at |

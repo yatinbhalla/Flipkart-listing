@@ -39,3 +39,24 @@
 ## Field values that stay blank
 - Thickness: leave **empty** (a value inconsistent with pack weight is worse than none).
 - Packer Details must carry the **full address**, not just the business name (Legal Metrology).
+
+## Optional attributes (added 2026-09-24)
+Every optional Additional Description attribute is now filled on all three verticals,
+with the exception of four classes that are blank ON PURPOSE. The complete per-vertical
+attribute list lives in `content/<VERTICAL>_SCHEMA.json`, captured by `POST /api/discover`.
+
+- **Not-applicable attributes carry the words `Not Applicable`** (warranty text fields,
+  Character on the table covers, Thread Count on PVC). These render on the customer-facing
+  spec table, so they are visible — that is the intended trade for a complete listing.
+- **Counts that are genuinely zero carry `0`** (Number of Hooks, Number of Pouches).
+- **Domestic Warranty / International Warranty stay blank.** They are warranty UNIT
+  dropdowns whose only options are `Year` and `Months`. There is no "none" option, so
+  selecting either would assert a warranty period that does not exist.
+- **EAN/UPC stays blank.** These products have no GTIN; a placeholder barcode can collide
+  with a real product's and is a likely QC rejection.
+- **Video URL stays blank.** It is a URL field and there is no video — `Not Applicable` is
+  not a URL.
+- **Measured specs are left blank until the seller supplies them**, on the same reasoning
+  as Thickness: a wrong number is worse than none. Outstanding:
+  Depth (wall hanging, baby muslin), GSM / Tog Rating / Thread Count (baby muslin),
+  Thread Count (cotton net table covers only — PVC is `Not Applicable`).

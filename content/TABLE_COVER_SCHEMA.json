@@ -1,7 +1,7 @@
 {
-  "vertical": "Hanging Organizers",
+  "vertical": "Table Cover",
   "discoveredAt": "2026-09-24",
-  "mandatoryCount": 28,
+  "mandatoryCount": 25,
   "tabs": {
     "Price, Stock and Shipping": [
       {
@@ -264,32 +264,39 @@
         "unit": null
       },
       {
-        "label": "Brand Color",
+        "label": "Model Name",
+        "mandatory": true,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Color",
         "mandatory": true,
         "type": "multi-value",
         "unit": null
       },
       {
+        "label": "Pack of",
+        "mandatory": true,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Color",
+        "mandatory": true,
+        "type": "dropdown",
+        "unit": null,
+        "options": []
+      },
+      {
         "label": "Type",
         "mandatory": true,
-        "type": "multi-pick",
+        "type": "dropdown",
         "unit": null,
         "options": [
-          "Select All",
-          "Accessories Organizer",
-          "Bedside Organizer",
-          "Bookcase Organizer",
-          "Closet Organizer",
-          "Fridge Organizer",
-          "Gift Wrap Organizer",
-          "Handbag Organizer",
-          "Jewellery Organizer",
-          "Regular Organizer",
-          "Scarf Organizer",
-          "Shoe Organizer",
-          "Shower Caddy Organizer",
-          "Stationery Organizer",
-          "TV & Media Console Organizer"
+          "Select One",
+          "Table Cover",
+          "Table Cloth"
         ]
       },
       {
@@ -299,91 +306,108 @@
         "unit": null,
         "options": [
           "Select All",
-          "Acrylic",
-          "Bamboo",
-          "Canvas",
-          "Carbon Fiber",
-          "Cardboard",
-          "Cloth",
-          "Fabric",
-          "Felt",
-          "Hemp",
-          "Jute",
-          "Mesh",
-          "Metal",
-          "Nylon",
-          "Other Plant Fibers",
+          "Cotton",
+          "Linen",
+          "Organza",
+          "PVC",
+          "Paper",
           "Plastic",
-          "Velvet"
+          "Polyester",
+          "Satin",
+          "Silk",
+          "Spandex",
+          "Velvet",
+          "Vinyl"
         ]
       },
       {
-        "label": "Color",
+        "label": "Pattern",
         "mandatory": true,
         "type": "multi-pick",
         "unit": null,
         "options": [
           "Select All",
-          "Beige",
-          "Black",
-          "Blue",
-          "Brown",
-          "Clear",
-          "Gold",
-          "Green",
-          "Grey",
-          "Maroon",
-          "Multicolor",
-          "Orange",
-          "Pink",
-          "Purple",
-          "Red",
-          "Silver",
-          "Steel",
-          "White",
-          "Yellow"
+          "Abstract",
+          "Animal",
+          "Argyle",
+          "Batik",
+          "Checkered",
+          "Chevron",
+          "Crocheted",
+          "Damask",
+          "Embroidered",
+          "Fleur-de-lis",
+          "Floral",
+          "Fret",
+          "Geometric",
+          "Graphic",
+          "Ikat",
+          "Lattice",
+          "Mosaic",
+          "Paisley",
+          "Plaid",
+          "Polka",
+          "Printed",
+          "Self Design",
+          "Solid",
+          "Striped",
+          "Trellis"
         ]
       },
       {
-        "label": "Number of Holders",
+        "label": "Seating Capacity",
         "mandatory": true,
+        "type": "dropdown",
+        "unit": null,
+        "options": [
+          "Select One",
+          "2 Seater",
+          "4 Seater",
+          "6 Seater",
+          "8 Seater",
+          "10 Seater",
+          "12 Seater",
+          "14 Seater",
+          "16 Seater",
+          "18 Seater",
+          "22 Seater"
+        ]
+      }
+    ],
+    "Additional Description": [
+      {
+        "label": "Items Included",
+        "mandatory": false,
+        "type": "multi-value",
+        "unit": null
+      },
+      {
+        "label": "EAN/UPC",
+        "mandatory": false,
+        "type": "multi-value",
+        "unit": null
+      },
+      {
+        "label": "Character",
+        "mandatory": false,
+        "type": "multi-value",
+        "unit": null
+      },
+      {
+        "label": "Thread Count",
+        "mandatory": false,
         "type": "text",
         "unit": null
       },
       {
-        "label": "Holder Type",
-        "mandatory": true,
-        "type": "multi-pick",
-        "unit": null,
-        "options": [
-          "Select All",
-          "Button Loops",
-          "Compartments",
-          "Hooks",
-          "Pockets",
-          "Pull Out Drawers",
-          "Shelves",
-          "Zipper Pouches"
-        ]
+        "label": "Brand Color",
+        "mandatory": false,
+        "type": "multi-value",
+        "unit": null
       },
       {
-        "label": "Mounting Type",
-        "mandatory": true,
-        "type": "multi-pick",
-        "unit": null,
-        "options": [
-          "Select All",
-          "Fabric Loop",
-          "Hanger",
-          "Hook",
-          "Metal Slider",
-          "Velcro Loop",
-          "Velcro Straps"
-        ]
-      },
-      {
-        "label": "Foldable",
-        "mandatory": true,
+        "label": "Reversible",
+        "mandatory": false,
         "type": "dropdown",
         "unit": null,
         "options": [
@@ -391,44 +415,6 @@
           "Yes",
           "No"
         ]
-      },
-      {
-        "label": "Width",
-        "mandatory": true,
-        "type": "text",
-        "unit": null
-      },
-      {
-        "label": "Height",
-        "mandatory": true,
-        "type": "text",
-        "unit": null
-      },
-      {
-        "label": "Items Included",
-        "mandatory": true,
-        "type": "multi-value",
-        "unit": null
-      }
-    ],
-    "Additional Description": [
-      {
-        "label": "Depth",
-        "mandatory": false,
-        "type": "text",
-        "unit": null
-      },
-      {
-        "label": "Weight",
-        "mandatory": false,
-        "type": "text",
-        "unit": "g"
-      },
-      {
-        "label": "Other Dimensions",
-        "mandatory": false,
-        "type": "multi-value",
-        "unit": null
       },
       {
         "label": "Description",
@@ -455,37 +441,7 @@
         "unit": null
       },
       {
-        "label": "Model Name",
-        "mandatory": false,
-        "type": "text",
-        "unit": null
-      },
-      {
-        "label": "Number of Pouches",
-        "mandatory": false,
-        "type": "text",
-        "unit": null
-      },
-      {
-        "label": "Number of Loops",
-        "mandatory": false,
-        "type": "text",
-        "unit": null
-      },
-      {
-        "label": "Number of Hooks",
-        "mandatory": false,
-        "type": "text",
-        "unit": null
-      },
-      {
-        "label": "Number of Pockets",
-        "mandatory": false,
-        "type": "text",
-        "unit": null
-      },
-      {
-        "label": "Hanger Included",
+        "label": "Gift Pack",
         "mandatory": false,
         "type": "dropdown",
         "unit": null,
@@ -496,47 +452,37 @@
         ]
       },
       {
-        "label": "Suitable For",
+        "label": "Width",
+        "mandatory": false,
+        "type": "text",
+        "unit": "inch"
+      },
+      {
+        "label": "Length",
+        "mandatory": false,
+        "type": "text",
+        "unit": "inch"
+      },
+      {
+        "label": "Thickness",
+        "mandatory": false,
+        "type": "text",
+        "unit": "mm"
+      },
+      {
+        "label": "Weight",
+        "mandatory": false,
+        "type": "text",
+        "unit": "g"
+      },
+      {
+        "label": "Other Dimensions",
         "mandatory": false,
         "type": "multi-value",
         "unit": null
       },
       {
-        "label": "Washable",
-        "mandatory": false,
-        "type": "dropdown",
-        "unit": null,
-        "options": [
-          "Select One",
-          "Yes",
-          "No"
-        ]
-      },
-      {
-        "label": "Rust Resistant",
-        "mandatory": false,
-        "type": "dropdown",
-        "unit": null,
-        "options": [
-          "Select One",
-          "Yes",
-          "No"
-        ]
-      },
-      {
-        "label": "EAN/UPC",
-        "mandatory": false,
-        "type": "multi-value",
-        "unit": null
-      },
-      {
-        "label": "Pack of",
-        "mandatory": false,
-        "type": "text",
-        "unit": null
-      },
-      {
-        "label": "Case Included",
+        "label": "Wrinkle Free",
         "mandatory": false,
         "type": "dropdown",
         "unit": null,

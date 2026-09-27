@@ -310,7 +310,14 @@ async function clickEmptySpace(page, container) {
  *     once ended up inside Search Keywords as a single keyword.
  */
 export async function setPills(page, label, values, occurrence = 0) {
-  const list = (Array.isArray(values) ? values : [values]).map((v) => String(v).trim()).filter(Boolean);
+  // Drop null/undefined BEFORE stringifying. `String(undefined)` is the non-empty
+  // string "undefined", which survives the filter below — setPills would commit it
+  // as a real pill, so an attribute a path simply did not set would land on the
+  // live listing reading "undefined" instead of staying blank.
+  const list = (Array.isArray(values) ? values : [values])
+    .filter((v) => v !== undefined && v !== null)
+    .map((v) => String(v).trim())
+    .filter(Boolean);
   if (!list.length) return;
 
   const row = await rowFor(page, label, occurrence);
@@ -406,7 +413,14 @@ export async function countPills(page, label, occurrence = 0) {
  * "N Selected" rather than the value, so we close with Escape when done.
  */
 export async function pickMulti(page, label, values, occurrence = 0) {
-  const list = (Array.isArray(values) ? values : [values]).map((v) => String(v).trim()).filter(Boolean);
+  // Drop null/undefined BEFORE stringifying. `String(undefined)` is the non-empty
+  // string "undefined", which survives the filter below — setPills would commit it
+  // as a real pill, so an attribute a path simply did not set would land on the
+  // live listing reading "undefined" instead of staying blank.
+  const list = (Array.isArray(values) ? values : [values])
+    .filter((v) => v !== undefined && v !== null)
+    .map((v) => String(v).trim())
+    .filter(Boolean);
   if (!list.length) return;
 
   const row = await rowFor(page, label, occurrence);

@@ -236,11 +236,29 @@ export async function fillProductDescription(page, v, log) {
   await F.pick(page, 'Seating Capacity', v.seatingCapacity);
 }
 
+/**
+ * Fill the Table Cover Additional Description tab.
+ *
+ * Ordered to match the live form top-to-bottom (see TABLE_COVER_SCHEMA.json, 25
+ * attributes). Addressing is by label, so the order is only about keeping the
+ * panel scrolling one way rather than jumping around.
+ *
+ * Three attributes are deliberately never written:
+ *   - EAN/UPC — these products carry no GTIN, and inventing one risks colliding
+ *     with a real product's barcode.
+ *   - Video URL — a URL field; there is no video, and "Not Applicable" is not a URL.
+ *   - Domestic / International Warranty — these are warranty UNIT dropdowns whose
+ *     only options are "Year" and "Months". Neither says "none", so picking one
+ *     would assert a warranty period that does not exist. The free-text warranty
+ *     fields carry "Not Applicable" instead.
+ */
 export async function fillAdditional(page, v, log) {
   await F.openTab(page, F.TABS.additional);
   log('Filling Additional Description…');
 
   await F.setPills(page, 'Items Included', v.itemsIncluded);
+  await F.setPills(page, 'Character', v.character);
+  await F.setText(page, 'Thread Count', v.threadCount);
   await F.setPills(page, 'Brand Color', v.brandColor);
   await F.pick(page, 'Reversible', v.reversible);
   await F.setText(page, 'Description', v.description);
@@ -252,8 +270,18 @@ export async function fillAdditional(page, v, log) {
   // Thickness stays empty on purpose — see APP_REQUIREMENTS.md.
   await F.setText(page, 'Thickness', v.thickness);
   await F.setText(page, 'Weight', v.weightGrams);
+  // Derived rather than stored: it is just this variant's size restated, and a
+  // stored copy would go stale the moment a variant's dimensions changed.
+  await F.setPills(page, 'Other Dimensions', [
+    `Cover size: ${v.sizeInches.width} x ${v.sizeInches.length} inch`,
+  ]);
   await F.pick(page, 'Wrinkle Free', v.wrinkleFree);
   await F.setPills(page, 'Care Instructions', v.careInstructions);
+  await F.setPills(page, 'Other Features', v.otherFeatures);
+  await F.setText(page, 'Warranty Summary', v.warrantySummary);
+  await F.setText(page, 'Warranty Service Type', v.warrantyServiceType);
+  await F.setText(page, 'Covered in Warranty', v.coveredInWarranty);
+  await F.setText(page, 'Not Covered in Warranty', v.notCoveredInWarranty);
 }
 
 /**

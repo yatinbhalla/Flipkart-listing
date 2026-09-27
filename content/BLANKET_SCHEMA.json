@@ -1,7 +1,7 @@
 {
-  "vertical": "Hanging Organizers",
+  "vertical": "Blanket",
   "discoveredAt": "2026-09-24",
-  "mandatoryCount": 28,
+  "mandatoryCount": 31,
   "tabs": {
     "Price, Stock and Shipping": [
       {
@@ -258,10 +258,43 @@
     ],
     "Product Description": [
       {
+        "label": "Model Name",
+        "mandatory": true,
+        "type": "text",
+        "unit": null
+      },
+      {
         "label": "Model Number",
         "mandatory": true,
         "type": "text",
         "unit": null
+      },
+      {
+        "label": "Pattern",
+        "mandatory": true,
+        "type": "multi-pick",
+        "unit": null,
+        "options": [
+          "Select All",
+          "3D Printed",
+          "Abstract",
+          "Animal",
+          "Cartoon",
+          "Checkered",
+          "Damask",
+          "Embroidered",
+          "Floral",
+          "Geometric",
+          "Motifs",
+          "Paisley",
+          "Polka",
+          "Printed",
+          "Self Design",
+          "Solid",
+          "Striped",
+          "Text Print",
+          "Kantha"
+        ]
       },
       {
         "label": "Brand Color",
@@ -270,52 +303,10 @@
         "unit": null
       },
       {
-        "label": "Type",
+        "label": "Design",
         "mandatory": true,
-        "type": "multi-pick",
-        "unit": null,
-        "options": [
-          "Select All",
-          "Accessories Organizer",
-          "Bedside Organizer",
-          "Bookcase Organizer",
-          "Closet Organizer",
-          "Fridge Organizer",
-          "Gift Wrap Organizer",
-          "Handbag Organizer",
-          "Jewellery Organizer",
-          "Regular Organizer",
-          "Scarf Organizer",
-          "Shoe Organizer",
-          "Shower Caddy Organizer",
-          "Stationery Organizer",
-          "TV & Media Console Organizer"
-        ]
-      },
-      {
-        "label": "Material",
-        "mandatory": true,
-        "type": "multi-pick",
-        "unit": null,
-        "options": [
-          "Select All",
-          "Acrylic",
-          "Bamboo",
-          "Canvas",
-          "Carbon Fiber",
-          "Cardboard",
-          "Cloth",
-          "Fabric",
-          "Felt",
-          "Hemp",
-          "Jute",
-          "Mesh",
-          "Metal",
-          "Nylon",
-          "Other Plant Fibers",
-          "Plastic",
-          "Velvet"
-        ]
+        "type": "multi-value",
+        "unit": null
       },
       {
         "label": "Color",
@@ -328,68 +319,119 @@
           "Black",
           "Blue",
           "Brown",
-          "Clear",
+          "Dark Blue",
+          "Dark Green",
           "Gold",
           "Green",
           "Grey",
+          "Lavender",
+          "Light Blue",
+          "Light Green",
           "Maroon",
           "Multicolor",
           "Orange",
+          "Peach",
           "Pink",
           "Purple",
           "Red",
           "Silver",
-          "Steel",
           "White",
           "Yellow"
         ]
       },
       {
-        "label": "Number of Holders",
-        "mandatory": true,
-        "type": "text",
-        "unit": null
-      },
-      {
-        "label": "Holder Type",
-        "mandatory": true,
-        "type": "multi-pick",
-        "unit": null,
-        "options": [
-          "Select All",
-          "Button Loops",
-          "Compartments",
-          "Hooks",
-          "Pockets",
-          "Pull Out Drawers",
-          "Shelves",
-          "Zipper Pouches"
-        ]
-      },
-      {
-        "label": "Mounting Type",
-        "mandatory": true,
-        "type": "multi-pick",
-        "unit": null,
-        "options": [
-          "Select All",
-          "Fabric Loop",
-          "Hanger",
-          "Hook",
-          "Metal Slider",
-          "Velcro Loop",
-          "Velcro Straps"
-        ]
-      },
-      {
-        "label": "Foldable",
+        "label": "Type",
         "mandatory": true,
         "type": "dropdown",
         "unit": null,
         "options": [
           "Select One",
-          "Yes",
-          "No"
+          "AC Blanket",
+          "Baby Sleep Sack",
+          "Bhagalpuri Blanket",
+          "Chutka Blanket",
+          "Comforter",
+          "Coral Blanket",
+          "Crib Baby Blanket",
+          "Dohar",
+          "Duvet",
+          "Electric Blanket",
+          "Fleece Blanket",
+          "Ghongadi Blanket",
+          "Hooded Baby Blanket",
+          "Jaipuri Blanket",
+          "Khes Blanket",
+          "Mermaid Tail Blanket",
+          "Mink Blanket",
+          "Quilt",
+          "Sherpa Blanket",
+          "Swaddling Baby Blanket",
+          "Thermal Blanket",
+          "Throw",
+          "Thulma Blanket",
+          "Top Sheet",
+          "Wearable Blanket",
+          "Weighted Blanket",
+          "Woollen Blanket"
+        ]
+      },
+      {
+        "label": "Size",
+        "mandatory": true,
+        "type": "multi-pick",
+        "unit": null,
+        "options": [
+          "Select All",
+          "Crib",
+          "Double",
+          "King",
+          "Queen",
+          "Single"
+        ]
+      },
+      {
+        "label": "Ideal For",
+        "mandatory": true,
+        "type": "dropdown",
+        "unit": null,
+        "options": [
+          "Select One",
+          "Adults",
+          "Baby Boys",
+          "Baby Boys and Baby Girls",
+          "Baby Girls",
+          "Boys",
+          "Boys and Girls",
+          "Girls"
+        ]
+      },
+      {
+        "label": "Number of Blankets",
+        "mandatory": true,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Outer Material",
+        "mandatory": true,
+        "type": "dropdown",
+        "unit": null,
+        "options": [
+          "Select One",
+          "100% Wool",
+          "Bamboo",
+          "Bamboo Cotton",
+          "Cotton",
+          "Fur",
+          "Linen",
+          "Microfiber",
+          "Muslin",
+          "Nylon",
+          "Poly Cotton",
+          "Polyester",
+          "Satin",
+          "Silk",
+          "Woollen Blend"
         ]
       },
       {
@@ -405,30 +447,111 @@
         "unit": null
       },
       {
-        "label": "Items Included",
+        "label": "Ideal Usage",
         "mandatory": true,
-        "type": "multi-value",
-        "unit": null
+        "type": "dropdown",
+        "unit": null,
+        "options": [
+          "Select One",
+          "AC Room",
+          "All Season",
+          "Heavy Winter",
+          "Mild Winter"
+        ]
+      },
+      {
+        "label": "Organic",
+        "mandatory": true,
+        "type": "dropdown",
+        "unit": null,
+        "options": [
+          "Select One",
+          "Yes",
+          "No"
+        ]
       }
     ],
     "Additional Description": [
       {
-        "label": "Depth",
-        "mandatory": false,
-        "type": "text",
-        "unit": null
-      },
-      {
-        "label": "Weight",
-        "mandatory": false,
-        "type": "text",
-        "unit": "g"
-      },
-      {
-        "label": "Other Dimensions",
+        "label": "EAN/UPC",
         "mandatory": false,
         "type": "multi-value",
         "unit": null
+      },
+      {
+        "label": "GSM",
+        "mandatory": false,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Tog Rating",
+        "mandatory": false,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Character",
+        "mandatory": false,
+        "type": "multi-value",
+        "unit": null
+      },
+      {
+        "label": "Weave Type",
+        "mandatory": false,
+        "type": "multi-value",
+        "unit": null
+      },
+      {
+        "label": "Thread Count (per square inch)",
+        "mandatory": false,
+        "type": "text",
+        "unit": "inch"
+      },
+      {
+        "label": "Inner Material",
+        "mandatory": false,
+        "type": "dropdown",
+        "unit": null,
+        "options": [
+          "Select One",
+          "100% Cotton",
+          "Acrylic",
+          "Bamboo fabric",
+          "Coral",
+          "Cotton",
+          "Cotton Acrylic Blend",
+          "Cotton Fibre Blend",
+          "Cotton Flannel",
+          "Cotton Fleece Blend",
+          "Fallalin",
+          "Flannel",
+          "Fleece",
+          "Fur",
+          "Handwoven",
+          "Hollow fiber",
+          "Micro Poly wadding",
+          "Microfiber",
+          "Mink",
+          "Mulmul",
+          "Muslin",
+          "Nylon",
+          "Organic Cotton",
+          "Organic Muslin",
+          "PVC",
+          "Plush",
+          "Polar",
+          "Polycotton",
+          "Polyester",
+          "Polyester Fleece",
+          "Polyfibre",
+          "Satin",
+          "Silk",
+          "Terry",
+          "Velvet",
+          "Wool Blend",
+          "Woolen"
+        ]
       },
       {
         "label": "Description",
@@ -455,54 +578,13 @@
         "unit": null
       },
       {
-        "label": "Model Name",
-        "mandatory": false,
-        "type": "text",
-        "unit": null
-      },
-      {
-        "label": "Number of Pouches",
-        "mandatory": false,
-        "type": "text",
-        "unit": null
-      },
-      {
-        "label": "Number of Loops",
-        "mandatory": false,
-        "type": "text",
-        "unit": null
-      },
-      {
-        "label": "Number of Hooks",
-        "mandatory": false,
-        "type": "text",
-        "unit": null
-      },
-      {
-        "label": "Number of Pockets",
-        "mandatory": false,
-        "type": "text",
-        "unit": null
-      },
-      {
-        "label": "Hanger Included",
-        "mandatory": false,
-        "type": "dropdown",
-        "unit": null,
-        "options": [
-          "Select One",
-          "Yes",
-          "No"
-        ]
-      },
-      {
-        "label": "Suitable For",
+        "label": "Instruction",
         "mandatory": false,
         "type": "multi-value",
         "unit": null
       },
       {
-        "label": "Washable",
+        "label": "Gift Pack",
         "mandatory": false,
         "type": "dropdown",
         "unit": null,
@@ -513,47 +595,43 @@
         ]
       },
       {
-        "label": "Rust Resistant",
-        "mandatory": false,
-        "type": "dropdown",
-        "unit": null,
-        "options": [
-          "Select One",
-          "Yes",
-          "No"
-        ]
-      },
-      {
-        "label": "EAN/UPC",
+        "label": "Items Included",
         "mandatory": false,
         "type": "multi-value",
         "unit": null
       },
       {
-        "label": "Pack of",
+        "label": "Fabric Care",
         "mandatory": false,
-        "type": "text",
+        "type": "multi-value",
         "unit": null
       },
       {
-        "label": "Case Included",
-        "mandatory": false,
-        "type": "dropdown",
-        "unit": null,
-        "options": [
-          "Select One",
-          "Yes",
-          "No"
-        ]
-      },
-      {
-        "label": "Care Instructions",
+        "label": "Safety Features",
         "mandatory": false,
         "type": "multi-value",
         "unit": null
       },
       {
         "label": "Other Features",
+        "mandatory": false,
+        "type": "multi-value",
+        "unit": null
+      },
+      {
+        "label": "Depth",
+        "mandatory": false,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Weight",
+        "mandatory": false,
+        "type": "text",
+        "unit": "g"
+      },
+      {
+        "label": "Other Dimensions",
         "mandatory": false,
         "type": "multi-value",
         "unit": null
@@ -591,13 +669,13 @@
         "unit": null
       },
       {
-        "label": "Covered in Warranty",
+        "label": "Domestic",
         "mandatory": false,
         "type": "text",
         "unit": null
       },
       {
-        "label": "Not Covered in Warranty",
+        "label": "Type of Warranty",
         "mandatory": false,
         "type": "text",
         "unit": null
