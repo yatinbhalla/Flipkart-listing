@@ -5,7 +5,7 @@ import SharedImages from './components/SharedImages.jsx';
 import RunPanel from './components/RunPanel.jsx';
 import CopyPanel from './components/CopyPanel.jsx';
 import SavedImagesBadge from './components/SavedImagesBadge.jsx';
-import { pathLabel } from './pathLabel.js';
+import PathPicker from './components/PathPicker.jsx';
 
 export default function App() {
   const { lines, events, clear } = useWebSocket();
@@ -67,15 +67,7 @@ export default function App() {
       </header>
 
       {paths.length > 1 && (
-        <select
-          value={selectedId || ''}
-          onChange={(e) => setSelectedId(e.target.value)}
-          className="mb-4 rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
-        >
-          {paths.map((p) => (
-            <option key={p.id} value={p.id}>{pathLabel(p)}</option>
-          ))}
-        </select>
+        <PathPicker paths={paths} selectedId={selectedId} onSelect={setSelectedId} />
       )}
 
       {!selected && <p className="text-sm text-slate-500">No paths yet.</p>}
