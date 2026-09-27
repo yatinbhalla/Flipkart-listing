@@ -16,6 +16,17 @@ export default function App() {
 
   useEffect(() => { refresh(); }, []);
 
+  // Path configs change on disk outside the app — a path recorded, a field map
+  // added — and the list is otherwise fetched only at mount. A tab left open then
+  // shows stale data indefinitely, which reads as the app being wrong about a path
+  // rather than merely out of date. Re-fetching on focus costs one request when the
+  // seller comes back to the window.
+  useEffect(() => {
+    const onFocus = () => refresh();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, []);
+
   // The server announces run-finished over the socket so the button re-enables
   // even if the run ended in an error.
   useEffect(() => {
@@ -43,7 +54,11 @@ export default function App() {
     const res = await fetch('/api/paths');
     const data = await res.json();
     setPaths(data);
-    if (!selectedId && data.length) setSelectedId(data[0].id);
+    // Functional update, because refresh runs from a listener whose closure holds
+    // whatever selectedId was when it was registered. Reading the state variable
+    // here would see `null` forever and reset the seller's choice to the first
+    // path every time the window regained focus.
+    setSelectedId((current) => current || (data.length ? data[0].id : null));
   }
 
   const selected = paths.find((p) => p.id === selectedId);
