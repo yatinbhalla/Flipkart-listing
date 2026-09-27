@@ -27,6 +27,25 @@ function valueAt(data, path) {
 }
 
 /**
+ * Render "Cover size: {sizeInches.width} x {sizeInches.length} inch" against the
+ * variant.
+ *
+ * Some attributes are just other attributes restated, and storing a copy means it
+ * goes stale the moment a variant's dimensions change. Returns an array because
+ * every field that needs this is a pill field. Yields nothing if any placeholder
+ * is missing, so a half-substituted string never reaches the form.
+ */
+function renderTemplate(template, data) {
+  let missing = false;
+  const text = String(template).replace(/\{([^}]+)\}/g, (_, path) => {
+    const v = valueAt(data, path.trim());
+    if (v === undefined || v === null || v === '') missing = true;
+    return String(v ?? '');
+  });
+  return missing ? [] : [text];
+}
+
+/**
  * Fill one tab from its field map. Fields whose value is empty are skipped, which
  * is how optional attributes stay blank without needing to be listed as absent.
  */
@@ -35,7 +54,11 @@ export async function fillTab(page, tabName, fields, data, log) {
   log(`Filling ${tabName}…`);
 
   for (const field of fields) {
-    const value = field.from ? valueAt(data, field.from) : field.value;
+    const value = field.template
+      ? renderTemplate(field.template, data)
+      : field.from
+        ? valueAt(data, field.from)
+        : field.value;
     if (value === undefined || value === null || value === '' ||
         (Array.isArray(value) && value.length === 0)) {
       continue;
@@ -45,34 +68,35 @@ export async function fillTab(page, tabName, fields, data, log) {
     // answers, so a missing optional field is not an error.
     if (field.optional && !(await F.hasField(page, field.label))) continue;
 
-    // A value the storefront no longer offers. Shopsy's Ideal Usage dropped
-    // "All Season", and picking a nearby season instead would assert something
-    // about the product that is not true — so the field is left blank and the
-    // skip is logged rather than passed over silently.
-    if (field.unavailableValues?.length) {
-      const remaining = [].concat(value).filter((v) => !field.unavailableValues.includes(String(v)));
-      if (!remaining.length) {
-        log(`↷ ${field.label}: "${[].concat(value).join(', ')}" is not offered here — left blank.`);
-        continue;
-      }
+
+    // A storefront that does not offer the path's value takes the seller's chosen
+    // stand-in instead — Shopsy has no "All Season" for Ideal Usage, so the muslin
+    // paths list as "AC Room" there while Flipkart keeps "All Season".
+    const swap = field.substitute;
+    const swapOne = (v) => (swap ? swap[String(v)] ?? v : v);
+    // Arrayness is preserved: a dropdown takes a scalar, and wrapping one in an
+    // array here would hand pick() something it cannot match against an option.
+    const final = !swap ? value : Array.isArray(value) ? value.map(swapOne) : swapOne(value);
+    if (swap && String(final) !== String(value)) {
+      log(`↷ ${field.label}: "${value}" → "${final}" on this storefront.`);
     }
 
     const at = field.at || 0;
     switch (field.type) {
       case 'dropdown':
-        await F.pick(page, field.label, value, at);
+        await F.pick(page, field.label, final, at);
         break;
       case 'multi-pick':
-        await F.pickMulti(page, field.label, value, at);
+        await F.pickMulti(page, field.label, final, at);
         break;
       case 'pills':
       case 'multi-value':
-        await F.setPills(page, field.label, value, at);
+        await F.setPills(page, field.label, final, at);
         break;
       case 'text':
       case 'long text':
       default:
-        await F.setText(page, field.label, value, at);
+        await F.setText(page, field.label, final, at);
         break;
     }
   }

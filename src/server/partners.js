@@ -41,14 +41,20 @@ export function verticalFor(vertical, partner) {
  *   single-select dropdown on Flipkart and a multi-select named "Color For
  *   Refiner" on Shopsy; driving a multi-select as a single-select leaves its menu
  *   open and the next field then searches a stale option list.
- * `unavailable` — the field exists but no longer offers a value a path uses.
+ * `substitute` — the field exists but no longer offers a value a path uses, and the
+ *   seller has chosen what it becomes instead.
+ * `move` — the attribute lives on a different tab. Filling is tab-scoped, so a field
+ *   left on its Flipkart tab is hunted for on a page that does not have it. These
+ *   all move from mandatory on Product Description to optional on Additional
+ *   Description, so they are marked optional as they go.
  */
 const SHOPSY_FIELDS = {
   'Table Cover': {
     rename: { 'Items Included': 'Sales Package' },
     drop: [],
     retype: { Color: { at: 1, label: 'Color For Refiner', type: 'multi-pick' } },
-    unavailable: {},
+    substitute: {},
+    move: {},
   },
   'Blanket': {
     rename: { 'Items Included': 'Sales Package' },
@@ -56,16 +62,27 @@ const SHOPSY_FIELDS = {
     // Model Name, which does exist.
     drop: ['Model Number'],
     retype: {},
-    // Shopsy's Ideal Usage offers only AC Room / Heavy Winter / Mild Winter.
-    // "All Season" is not among them, and the field is optional there, so it is
-    // left blank rather than guessed at — a wrong season is worse than none.
-    unavailable: { 'Ideal Usage': ['All Season'] },
+    // Shopsy's Ideal Usage offers only AC Room / Heavy Winter / Mild Winter, so the
+    // muslin paths' "All Season" has nowhere to go. AC Room is the seller's choice
+    // for it, not a guess.
+    substitute: { 'Ideal Usage': { 'All Season': 'AC Room' } },
+    move: {
+      Width: 'Additional Description',
+      Height: 'Additional Description',
+      'Ideal Usage': 'Additional Description',
+      Organic: 'Additional Description',
+    },
   },
   'Hanging Organizers': {
     rename: { 'Items Included': 'Sales Package' },
     drop: ['Pack of'],
     retype: {},
-    unavailable: {},
+    substitute: {},
+    move: {
+      'Holder Type': 'Additional Description',
+      'Mounting Type': 'Additional Description',
+      Foldable: 'Additional Description',
+    },
   },
 };
 
@@ -94,15 +111,42 @@ export function adaptFields(fields, vertical, partner) {
       return { ...f };
     })
     .map((f) => {
-      const gone = rules.unavailable[f.label];
-      return gone ? { ...f, unavailableValues: gone } : f;
+      const swap = rules.substitute[f.label];
+      return swap ? { ...f, substitute: swap } : f;
     });
 }
 
-/** Adapt a whole `path.fields` map. */
+/**
+ * Adapt a whole `path.fields` map, including fields that change tab.
+ *
+ * Moves are applied across the whole map rather than per tab, because filling is
+ * tab-scoped: `fillTab` opens one tab and addresses labels within it, so a field
+ * still listed under its Flipkart tab would be searched for on a page that does
+ * not contain it.
+ */
 export function adaptFieldMap(fieldMap, vertical, partner) {
   if (!fieldMap || String(partner).toLowerCase() !== 'shopsy') return fieldMap;
-  return Object.fromEntries(
+  const rules = SHOPSY_FIELDS[vertical];
+  if (!rules) throw new Error(`No Shopsy field rules are known for "${vertical}".`);
+
+  const out = Object.fromEntries(
     Object.entries(fieldMap).map(([tab, fields]) => [tab, adaptFields(fields, vertical, partner)]),
   );
+
+  for (const [tab, fields] of Object.entries(out)) {
+    const staying = [];
+    for (const field of fields) {
+      const target = rules.move[field.label];
+      if (!target || target === tab) {
+        staying.push(field);
+        continue;
+      }
+      out[target] = out[target] || [];
+      // Optional on arrival: every move so far is a field Shopsy demotes from
+      // mandatory, and marking it lets the fill skip it if the form omits it.
+      out[target].push({ ...field, optional: true });
+    }
+    out[tab] = staying;
+  }
+  return out;
 }
