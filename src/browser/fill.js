@@ -45,6 +45,18 @@ export async function fillTab(page, tabName, fields, data, log) {
     // answers, so a missing optional field is not an error.
     if (field.optional && !(await F.hasField(page, field.label))) continue;
 
+    // A value the storefront no longer offers. Shopsy's Ideal Usage dropped
+    // "All Season", and picking a nearby season instead would assert something
+    // about the product that is not true — so the field is left blank and the
+    // skip is logged rather than passed over silently.
+    if (field.unavailableValues?.length) {
+      const remaining = [].concat(value).filter((v) => !field.unavailableValues.includes(String(v)));
+      if (!remaining.length) {
+        log(`↷ ${field.label}: "${[].concat(value).join(', ')}" is not offered here — left blank.`);
+        continue;
+      }
+    }
+
     const at = field.at || 0;
     switch (field.type) {
       case 'dropdown':

@@ -163,6 +163,33 @@ router.get('/click', async (req, res) => {
 });
 
 /**
+ * GET /api/debug/clicksel?sel=<css> — a REAL Playwright click on a CSS selector.
+ *
+ * /click above matches on text and dispatches element.click(), which is useless for
+ * two independent reasons on some controls: an icon-only control has no text to
+ * match, and a programmatic click on Flipkart's React buttons reports success while
+ * doing nothing. This drives the mouse the way a person would.
+ */
+router.get('/clicksel', async (req, res) => {
+  try {
+    const { page } = await getSession(() => {});
+    const sel = String(req.query.sel || '');
+    if (!sel) return res.status(400).json({ error: 'sel is required' });
+    const target = page.locator(sel).first();
+    await target.waitFor({ state: 'attached', timeout: 15000 });
+    await target.scrollIntoViewIfNeeded().catch(() => {});
+    // force: a segmented control hides its real <input type=radio> behind the
+    // label art, so Playwright's visibility check rejects a click it would
+    // otherwise deliver correctly.
+    await target.click({ timeout: 15000, force: req.query.force === '1' });
+    await page.waitForTimeout(Number(req.query.wait || 3000));
+    res.json({ ok: true, url: page.url() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
  * GET /api/debug/variantrow?row=1 — what control type each matrix cell actually has.
  *
  * Half the columns that look like text boxes are dropdowns, and some render their

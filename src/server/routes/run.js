@@ -13,6 +13,7 @@ import { getSession } from '../../browser/session.js';
 import * as L from '../../browser/listing.js';
 import { MAX_BATCH, variantNeedsImage } from '../constants.js';
 import { describeListing, listingSkus } from '../format.js';
+import { PARTNERS, verticalFor } from '../partners.js';
 
 export { variantNeedsImage };
 
@@ -139,6 +140,10 @@ router.post('/', async (req, res) => {
     frontImages = [],
     variantImages = {},
     sendToQc = false,
+    // Which storefront to list on. Flipkart and Shopsy are separate catalogues
+    // behind one Seller Hub: listing on one does not list on the other, so the same
+    // path is run once per storefront.
+    partner = 'flipkart',
     // How many times to repeat the whole selection. Flipkart, unlike Meesho, accepts
     // any number of listings carrying the same photo, so 5 images with repeat 4 means
     // 20 listings — each still gets its own freshly allocated SKU.
@@ -150,6 +155,9 @@ router.post('/', async (req, res) => {
   } = req.body;
   const path = await getPath(pathId);
   if (!path) return res.status(404).json({ error: 'Path not found.' });
+  if (!PARTNERS.includes(String(partner).toLowerCase())) {
+    return res.status(400).json({ error: `Unknown partner "${partner}".` });
+  }
 
   const selected = Array.isArray(frontImages) ? frontImages : [frontImages];
   if (!selected.length) {
@@ -314,11 +322,11 @@ router.post('/', async (req, res) => {
         });
         log(`── ${label} · ${describeListing(resolved)} ──`);
 
-        await L.selectVertical(page, path.vertical, log);
+        await L.selectVertical(page, verticalFor(path.vertical, partner), log, { partner });
         await L.selectBrand(page, path.brand, log);
         await L.uploadImages(page, [front, ...shared], log);
 
-        await L.fillTabs(page, path, parent, log);
+        await L.fillTabs(page, path, parent, log, { partner });
         // Slots 2–5 per variant: the path's reused set, with any per-variant file
         // (typically the slot-4 pack-size shot) swapped in.
         const variantShared = {};

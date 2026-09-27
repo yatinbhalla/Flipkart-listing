@@ -9,10 +9,87 @@
 import * as F from './form.js';
 import * as V from './variants.js';
 import { fillTab } from './fill.js';
+import { adaptFieldMap } from '../server/partners.js';
 
 const ADD_LISTING_URL = 'https://seller.flipkart.com/index.html#dashboard/addListings/single';
 
-export async function selectVertical(page, verticalLabel, log) {
+/**
+ * Flipkart and Shopsy are two storefronts behind one Seller Hub. The single-listing
+ * form picks between them with a segmented control beside its title, and the choice
+ * rewrites the whole vertical list: "Blanket" becomes "Shopsy Blanket", with its own
+ * field requirements behind it.
+ *
+ * The radios are addressed by `name` because Flipkart renders their `id` and `value`
+ * as the literal string "[object Object]" — a bug, but `name` is clean and stable.
+ */
+const PARTNER_RADIO = { flipkart: 'FLIPKART', shopsy: 'SHOPSY' };
+
+export async function selectPartner(page, partner, log) {
+  const wanted = PARTNER_RADIO[String(partner || 'flipkart').toLowerCase()];
+  if (!wanted) throw new Error(`Unknown partner "${partner}" — expected flipkart or shopsy.`);
+
+  const widget = page.locator('#partner-context-segmented-control');
+  if (!(await widget.count())) {
+    // A seller not enrolled in Shopsy has no switch at all. Defaulting to Flipkart
+    // is correct there; silently listing on Flipkart when Shopsy was asked for is not.
+    if (wanted === 'SHOPSY') {
+      throw new Error(
+        'No Flipkart/Shopsy switch on the listing form — this account may not be ' +
+          'enrolled in Shopsy.',
+      );
+    }
+    return;
+  }
+
+  const pick = (name) => widget.locator(`label:has(input[name="${name}"])`);
+  const radio = widget.locator(`input[name="${wanted}"]`);
+
+  if (!(await radio.isChecked().catch(() => false))) {
+    // Click the label, never the input: the real radio is visually hidden behind the
+    // label art, so Playwright rejects a click on it as outside the viewport.
+    await pick(wanted).click({ timeout: 15000 });
+    await page.waitForTimeout(2500);
+
+    // Verify by property. React never writes `checked` back to the HTML attribute,
+    // so re-reading the markup would report the old value forever.
+    if (!(await radio.isChecked().catch(() => false))) {
+      throw new Error(`Clicked the ${wanted} switch but it did not become selected.`);
+    }
+  }
+
+  // Switching partners re-fetches the vertical catalogue, and that fetch sometimes
+  // comes back empty: the favourites grid renders blank AND the typeahead offers
+  // nothing, so every later step fails with a confusing "no suggestion matched".
+  // Toggling away and back re-issues it. Observed on a clean page load, so this is
+  // checked even when the wanted partner was already selected.
+  if (!(await hasVerticalCards(page))) {
+    log('Vertical list came back empty — re-toggling the partner switch…');
+    await pick(wanted === 'SHOPSY' ? 'FLIPKART' : 'SHOPSY').click({ timeout: 15000 });
+    await page.waitForTimeout(2500);
+    await pick(wanted).click({ timeout: 15000 });
+    await page.waitForTimeout(3000);
+    if (!(await hasVerticalCards(page))) {
+      throw new Error(
+        `Switched to ${wanted} but the vertical list never populated. Nothing can be ` +
+          `selected in this state.`,
+      );
+    }
+  }
+
+  log(`✓ Partner: ${wanted}`);
+}
+
+/** Has the vertical catalogue actually rendered? */
+function hasVerticalCards(page, timeout = 12000) {
+  return page
+    .locator('div[class*="VerticalCard-"]')
+    .first()
+    .waitFor({ state: 'visible', timeout })
+    .then(() => true)
+    .catch(() => false);
+}
+
+export async function selectVertical(page, verticalLabel, log, { partner = 'flipkart' } = {}) {
   log(`Opening the single-listing form…`);
   await page.goto(ADD_LISTING_URL, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(4000);
@@ -36,6 +113,10 @@ export async function selectVertical(page, verticalLabel, log) {
     );
   }
 
+  // Before anything is searched for: the partner switch rewrites the vertical list
+  // underneath, so choosing it afterwards would mean picking from the wrong catalogue.
+  await selectPartner(page, partner, log);
+
   // Favourited verticals appear as cards under "Your Verticals" — cheapest path.
   const card = page.locator('div').filter({ hasText: new RegExp(`^${verticalLabel}$`) }).first();
   if (await card.count()) {
@@ -48,10 +129,30 @@ export async function selectVertical(page, verticalLabel, log) {
     const search = page.locator('input[placeholder*="Enter Product Name"]').first();
     if (await search.count()) {
       await search.fill(verticalLabel);
+      await page.waitForTimeout(2500);
+
+      // Typeahead rows are full category paths — "Shopsy / Baby Bedding & Gear /
+      // Shopsy Blanket" — so match on the segment after the last slash. A plain
+      // substring match picks up neighbours like "ShopsyFridge Door Shelf" and
+      // silently opens the wrong vertical, which only shows up as a baffling set
+      // of fields several steps later.
+      const rows = page.locator('li[class*="TypeAheadItemBox"]');
+      await rows.first().waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
+
+      const want = verticalLabel.trim().toLowerCase();
+      const tail = (t) => String(t).split('/').pop().trim().toLowerCase();
+      const texts = await rows.allInnerTexts().catch(() => []);
+
+      let index = texts.findIndex((t) => tail(t) === want);
+      if (index < 0) index = texts.findIndex((t) => tail(t).includes(want));
+      if (index < 0) {
+        throw new Error(
+          `Searched for "${verticalLabel}" but no suggestion matched. Offered: ` +
+            `${texts.slice(0, 6).join(' | ') || '(none)'}`,
+        );
+      }
+      await rows.nth(index).click({ timeout: 15000 });
       await page.waitForTimeout(2000);
-      const hit = page.locator(`text=${verticalLabel}`).first();
-      await hit.click().catch(() => {});
-      await page.waitForTimeout(1500);
     }
   }
 
@@ -176,15 +277,26 @@ export async function uploadImages(page, images, log) {
  * Falls back to the Table Cover functions when a path has no `fields` map, so the
  * original seeded path keeps working unchanged.
  */
-export async function fillTabs(page, path, variant, log) {
+export async function fillTabs(page, path, variant, log, { partner = 'flipkart' } = {}) {
   if (!path.fields) {
+    // The Table Cover paths still run on hardcoded fills. Those address Flipkart's
+    // labels directly, so they cannot be pointed at Shopsy — refuse rather than
+    // half-fill a listing and leave it failing QC for reasons that look unrelated.
+    if (String(partner).toLowerCase() === 'shopsy') {
+      throw new Error(
+        `"${path.name}" has no field map, so it can only be listed on Flipkart. ` +
+          `Shopsy needs a field map because its labels differ (Items Included is ` +
+          `"Sales Package", and Color becomes "Color For Refiner").`,
+      );
+    }
     await fillPriceStock(page, variant, log);
     await fillProductDescription(page, variant, log);
     await fillAdditional(page, variant, log);
     return;
   }
-  for (const [tabName, fields] of Object.entries(path.fields)) {
-    await fillTab(page, tabName, fields, variant, log);
+  const fields = adaptFieldMap(path.fields, path.vertical, partner);
+  for (const [tabName, tabFields] of Object.entries(fields)) {
+    await fillTab(page, tabName, tabFields, variant, log);
   }
 }
 

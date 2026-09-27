@@ -22,6 +22,9 @@ export default function RunPanel({ path, running, progress, onStarted }) {
   const [notes, setNotes] = useState([]);
   const [repeatOn, setRepeatOn] = useState(false);
   const [repeat, setRepeat] = useState(2);
+  // Which storefront this run lists on. Flipkart and Shopsy are separate
+  // catalogues, so the same path is run once for each.
+  const [partner, setPartner] = useState('flipkart');
 
   const imageVariants = path.variants.filter(variantNeedsImage);
   // A per-listing photo can't vary across a batch, so those paths list one at a time.
@@ -136,6 +139,7 @@ export default function RunPanel({ path, running, progress, onStarted }) {
             Object.entries(variantImages).map(([k, imgs]) => [k, (imgs || []).map((i) => i.path)]),
           ),
           sendToQc,
+          partner,
         }),
       });
       const data = await res.json();
@@ -357,6 +361,41 @@ export default function RunPanel({ path, running, progress, onStarted }) {
               {fronts.length || 'N'} distinct sets.
             </p>
           </div>
+        )}
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <h3 className="text-sm font-semibold">Storefront</h3>
+        <p className="mt-1 text-xs text-slate-500">
+          Flipkart and Shopsy are separate catalogues — listing on one does not list on the
+          other. Run the path once for each.
+        </p>
+        <div className="mt-2 flex gap-2">
+          {[
+            ['flipkart', 'Flipkart'],
+            ['shopsy', 'Shopsy'],
+          ].map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setPartner(id)}
+              disabled={running || busy}
+              className={`rounded-lg border px-3 py-1.5 text-sm ${
+                partner === id
+                  ? 'border-fk-blue bg-fk-blue/10 font-semibold text-fk-ink'
+                  : 'border-slate-300 text-slate-600'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {partner === 'shopsy' && !path.fields && (
+          <p className="mt-2 text-xs text-amber-700">
+            This path has no field map, so it can only be listed on Flipkart. Shopsy uses
+            different labels (Items Included is “Sales Package”, Color becomes “Color For
+            Refiner”).
+          </p>
         )}
       </div>
 

@@ -18,10 +18,10 @@ const router = express.Router();
  *
  * Leaves a draft behind, which is harmless and can be deleted afterwards.
  *
- * Body: { vertical, brand, options?: boolean }
+ * Body: { vertical, brand, partner?: 'flipkart' | 'shopsy', options?: boolean }
  */
 router.post('/', async (req, res) => {
-  const { vertical, brand, options = true } = req.body || {};
+  const { vertical, brand, partner = 'flipkart', options = true } = req.body || {};
   if (!vertical || !brand) {
     return res.status(400).json({ error: 'vertical and brand are required' });
   }
@@ -29,7 +29,7 @@ router.post('/', async (req, res) => {
   const log = (text) => broadcast({ type: 'info', text });
   try {
     const { page } = await getSession(log);
-    await L.selectVertical(page, vertical, log);
+    await L.selectVertical(page, vertical, log, { partner });
     await L.selectBrand(page, brand, log);
 
     const tabs = {};
@@ -66,7 +66,7 @@ router.post('/', async (req, res) => {
     );
 
     broadcast({ type: 'success', text: `Discovered ${mandatory.length} mandatory fields for ${vertical}.` });
-    res.json({ vertical, brand, tabs, mandatoryCount: mandatory.length, mandatory });
+    res.json({ vertical, brand, partner, tabs, mandatoryCount: mandatory.length, mandatory });
   } catch (err) {
     broadcast({ type: 'error', text: err.message });
     res.status(500).json({ error: err.message });
