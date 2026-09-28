@@ -128,6 +128,20 @@ export default function RunPanel({ path, running, progress, onStarted }) {
     setBusy(true);
     setError('');
     try {
+      // Meesho is a different marketplace, not a Flipkart storefront toggle: one
+      // product per catalogue, its own form, its own endpoint.
+      if (partner === 'meesho') {
+        const res = await fetch('/api/meesho/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pathId: path.id, submit: sendToQc }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        onStarted();
+        return;
+      }
+
       const res = await fetch('/api/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -367,13 +381,14 @@ export default function RunPanel({ path, running, progress, onStarted }) {
       <div className="rounded-xl border border-slate-200 bg-white p-4">
         <h3 className="text-sm font-semibold">Storefront</h3>
         <p className="mt-1 text-xs text-slate-500">
-          Flipkart and Shopsy are separate catalogues — listing on one does not list on the
-          other. Run the path once for each.
+          Each storefront is a separate catalogue — listing on one does not list on the
+          others. Run the path once for each.
         </p>
         <div className="mt-2 flex gap-2">
           {[
             ['flipkart', 'Flipkart'],
             ['shopsy', 'Shopsy'],
+            ['meesho', 'Meesho'],
           ].map(([id, label]) => (
             <button
               key={id}
@@ -390,6 +405,19 @@ export default function RunPanel({ path, running, progress, onStarted }) {
             </button>
           ))}
         </div>
+        {partner === 'meesho' && (
+          <p className="mt-2 text-xs text-slate-500">
+            Meesho lists one product per catalogue, so a multi-variant path lists only its
+            first variant, and set paths are not listed there at all. It takes four images:
+            the path's slot 4 becomes the front view, then slots 2, 3 and 5.
+          </p>
+        )}
+        {partner === 'meesho' && !path.meesho && (
+          <p className="mt-2 text-xs text-amber-700">
+            This path has no Meesho configuration — category, GST, HSN and price are all
+            needed before it can be listed there.
+          </p>
+        )}
         {partner === 'shopsy' && !path.fields && (
           <p className="mt-2 text-xs text-amber-700">
             This path has no field map, so it can only be listed on Flipkart. Shopsy uses
