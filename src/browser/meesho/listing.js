@@ -198,10 +198,17 @@ export async function createListing(page, { path: cfg, variant, sku, images, sub
   if (!M) throw new Error(`"${cfg.name}" has no meesho block — nothing to list with.`);
   const f = createFiller(page, log);
   const description = meeshoDescription(variant.copy);
+  // Phase timings: the seller can see which step is slow instead of us guessing.
+  let mark = Date.now();
+  const phase = (name) => {
+    log(`  [${((Date.now() - mark) / 1000).toFixed(1)}s] ${name}`);
+    mark = Date.now();
+  };
 
   log(`== category: ${M.category}`);
   await page.goto(SELECT_CATEGORY_URL, { waitUntil: 'domcontentloaded' });
   await appears(page, 'input[placeholder*="Sarees" i]', 40000);
+  phase('load category page');
   // Search on the leaf name: the typeahead misses on a fragment ("wall decor" finds
   // nothing where "wall decor & hangings" finds the category).
   await page
@@ -211,22 +218,35 @@ export async function createListing(page, { path: cfg, variant, sku, images, sub
   if (!(await appears(page, `text="${M.category}"`, 25000))) {
     throw new Error(`The typeahead never offered "${M.category}".`);
   }
+  phase('typeahead');
   await page.locator(`text="${M.category}"`).first().click();
   await appears(page, 'button:has-text("Add Product Images")', 30000);
+  phase('category');
 
   log('== front image');
   const chooser = page.waitForEvent('filechooser', { timeout: 25000 });
   await page.locator('button:has-text("Add Product Images")').first().click();
   (await chooser).setFiles(images.front);
-  // The Continue button only lights up once the upload has landed.
-  await appears(page, 'button:has-text("Continue")', 90000);
+  phase('front image handed over');
+
+  // Move on the instant Continue will take a click, rather than waiting for the
+  // upload to report itself finished.
   const cont = page.locator('button:has-text("Continue")').first();
-  if (await cont.isVisible().catch(() => false)) {
-    await cont.click();
-    if (!(await appears(page, '#supplier_gst_percent', 60000))) {
-      throw new Error('The product details form never rendered after Continue.');
+  const until = Date.now() + 90000;
+  while (Date.now() < until) {
+    if (
+      (await cont.isVisible().catch(() => false)) &&
+      !(await cont.isDisabled().catch(() => true))
+    ) {
+      await cont.click().catch(() => {});
+      if (await appears(page, '#supplier_gst_percent', 8000)) break;
     }
+    await page.waitForTimeout(250);
   }
+  if (!(await f.has('#supplier_gst_percent'))) {
+    throw new Error('The product details form never rendered after Continue.');
+  }
+  phase('continue');
 
   log('== product, size and inventory');
   await f.pick('#supplier_gst_percent', M.gstPercent, 'GST');
@@ -268,8 +288,10 @@ export async function createListing(page, { path: cfg, variant, sku, images, sub
         f.problems.push('extra images');
         log(`  FAIL images: ${String(err.message).slice(0, 70)}`);
       });
-    // The control disappears once the fourth image is present — that is the signal.
-    await vanishes(page, 'text="Add Images"', 90000);
+    // Deliberately NOT waited on. Nothing between here and the submit depends on
+    // the extra images, and there are two dozen fields to fill — so they upload
+    // while the form is being filled and are checked once, just before submitting.
+    phase('extra images handed over');
   }
 
   // Price before MRP so Meesho's own figures settle first, and the two volatile
@@ -328,6 +350,17 @@ export async function createListing(page, { path: cfg, variant, sku, images, sub
   await f.type('#packer_address', M.packerAddress || M.manufacturerAddress, 'packer address');
   await f.type('#packer_pincode', M.pincode, 'packer pincode');
   await f.type('#comment', description, 'description');
+
+  phase('fields');
+
+  // Now the images have to be there. They have had the whole form-filling pass to
+  // finish, so this is usually instant.
+  if (await f.has('#addMoreImagesInput')) {
+    if (!(await vanishes(page, 'text="Add Images"', 60000))) {
+      f.problems.push('extra images did not all upload');
+    }
+    phase('images settled');
+  }
 
   // Re-read what Meesho likes to rewrite, immediately before committing.
   for (const [sel, want, what] of [
