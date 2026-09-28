@@ -111,6 +111,50 @@ stay in the category and list them as **Scenery**. The alternative categories
 (Home Utility > Home Storage & Organization > Organisers, and Home & Living > Home
 Utility > Organisers) were not explored.
 
+## The submission flow, and what the form does to you
+
+Verified end to end on 2026-09-28 by listing TC_NBR (SKU TC_NBR/99634).
+
+Submitting is not one click: **Submit Catalog -> tick the "I understand that all
+products..." declaration -> Update Changes -> Proceed**, after which the panel
+returns to the catalog list. The declaration is another drawn checkbox, so it is
+clicked by its box, not its text.
+
+Fields are addressed by **id**, which is what the recordings in the standalone
+Meesho app use and is far steadier than label hunting:
+`#supplier_gst_percent`, `#hsn_code`, `#product_weight_in_gms`,
+`#supplier_product_id`, `#product_name`, `#meesho_price`, `#wdrp_discount`,
+`#product_mrp`, `#inventory`, `#supplier_sku_id`, `#color`, `#generic_name`,
+`#material`, `#multipack`, `#pattern`, `#product_length`, `#product_breadth`,
+`#product_height`, `#product_unit`, `#size`, `#weight`, `#weight_unit`,
+`#country_of_origin`, the manufacturer/packer fields, and `#comment`.
+
+Traps that cost a run each:
+
+- **The return discount is rewritten by Meesho.** Once a price exists it writes its
+  own suggested value into `#wdrp_discount`, so a "1" typed beforehand became
+  "141" and the form refused to submit: "Enter discount here, not price". Fill it
+  LAST, clear it explicitly, type it, and read it back — it is the only field on
+  the form that changes underneath you, so it is also re-checked immediately
+  before submit.
+- **Long dropdowns carry a search box** (`input.MuiInputBase-inputAdornedStart`) —
+  HSN, product length and product breadth need it.
+- **Short option values need a scoped match.** Looking for text "1" anywhere on the
+  page finds a dozen things that are not options; the match has to be inside the
+  open listbox.
+- **Extra images go through the file input `#addMoreImagesInput`**, all three at
+  once, and they are added AFTER the size is chosen.
+
+Values that are not what they look like:
+
+- `product_length` / `product_breadth` / `product_height` are the PRODUCT, not the
+  shipping packet: a 40x60 inch cover is L 60, B 40, H 0, unit Inch. (The 12x10x0.5
+  packet has no home on this form.)
+- `#size` wants the product size as one string, "40x60 Inch". The Free Size
+  checkbox is a different column entirely.
+- `#weight` is 0.1 with `#weight_unit` kg — the same 100 g, said Meesho's way.
+- The address fields take the town only ("Hansi"), not the full postal line.
+
 ## Prices
 
 Set per price group by the seller and stored per path. MRP matches Flipkart; the
