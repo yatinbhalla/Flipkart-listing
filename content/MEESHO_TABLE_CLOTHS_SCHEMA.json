@@ -4,7 +4,7 @@
   "discoveredAt": "2026-09-28",
   "entry": "Catalog Uploads > Add Single Catalog",
   "url": "https://supplier.meesho.com/panel/v3/new/cataloging/vaqbo/catalogs/single/add",
-  "fieldCount": 30,
+  "fieldCount": 36,
   "requiredLabels": [
     "Size and Inventory GST",
     "HSN Code",
@@ -63,6 +63,36 @@
       "name": null,
       "placeholder": "Select",
       "control": "dropdown"
+    },
+    {
+      "name": null,
+      "placeholder": "",
+      "control": "checkbox"
+    },
+    {
+      "name": null,
+      "placeholder": "",
+      "control": "number"
+    },
+    {
+      "name": null,
+      "placeholder": "",
+      "control": "number"
+    },
+    {
+      "name": null,
+      "placeholder": "",
+      "control": "number"
+    },
+    {
+      "name": null,
+      "placeholder": "",
+      "control": "number"
+    },
+    {
+      "name": null,
+      "placeholder": "",
+      "control": "text"
     },
     {
       "name": "color",
@@ -184,5 +214,30 @@
       "placeholder": "Enter Description",
       "control": "textarea"
     }
-  ]
+  ],
+  "formMechanics": {
+    "verifiedOn": "Home & Kitchen > Home Furnishings > Kitchen Linens > Table Cloths",
+    "note": "Form mechanics are shared by the single-catalog form; only the Table Cloths run exercised them end to end.",
+    "images": {
+      "max": 4,
+      "model": "One front image chosen at the category step, then up to 3 more via \"Add Images\" in the Uploaded Images panel on the right. The control disappears once the 4th image is present.",
+      "sellerChoice": "Front View from the run, then saved slots img2, img3 and img5. img4 does not fit the cap."
+    },
+    "sizeGate": {
+      "behaviour": "The price row does not exist until a Size is chosen. Choosing Free Size takes the field count from 30 to 36.",
+      "control": "The Size dropdown lists options as DRAWN checkboxes — there is no input[type=checkbox] on the page, and clicking the option text does not tick it. Click the box just left of the label, then Apply.",
+      "columns": [
+        "Size",
+        "Meesho Price*",
+        "Wrong / Defective Return Discount(₹)",
+        "MRP*",
+        "Inventory*",
+        "SKU ID (optional)",
+        "Actions"
+      ],
+      "copyAcross": "\"Copy price details to all sizes\" applies one row to every size."
+    },
+    "variants": "One catalog holds several products via \"Add Product\", with \"Copy input details to all product\" for the shared fields."
+  },
+  "fieldsAfterSizeSelected": 36
 }
