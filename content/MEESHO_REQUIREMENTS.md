@@ -155,6 +155,48 @@ Values that are not what they look like:
 - `#weight` is 0.1 with `#weight_unit` kg — the same 100 g, said Meesho's way.
 - The address fields take the town only ("Hansi"), not the full postal line.
 
+## Field ids differ per category
+
+The same attribute is not the same element in every category, so one set of
+selectors cannot drive all three. Proven by listing one product in each.
+
+| Attribute | Table Cloths / Wall Decor | Baby Blanket |
+|---|---|---|
+| Net Quantity | `#multipack` | `#pack_of` |
+| Length / Breadth | `#product_length` / `#product_breadth` | `#length_size` / `#width_size` |
+
+`#length_size` and `#width_size` do not exist until the size row is created, so a
+field inventory taken earlier in the form will not list them. "Field absent"
+therefore never means "field not required" — Baby Blanket reported *Mandatory
+field, Please provide Length Size* for a field that was not on the page when the
+form first loaded.
+
+Baby Blanket also has no material, pattern, product unit, weight or weight unit at
+all, and its Product Details "Size" carries no asterisk — optional, unlike the
+Table Cloths one which wants "40x60 Inch".
+
+## Reading the errors
+
+The submit banner counts errors without naming them, which costs a run per unknown.
+The offending fields carry MUI error styling, so after a failed submit the helper
+text under `.Mui-error, [aria-invalid="true"], .MuiFormHelperText-root` names them
+outright. Worth doing before guessing.
+
+## What has to be read back
+
+A successful `fill()` is not evidence the value stuck. The price row is rewritten
+by Meesho as its own figures settle, and three fields were observed to silently
+lose or mangle their value: the return discount, the row SKU id, and the
+inventory. All three are typed, read back, retried, and re-checked immediately
+before submit — the description length is checked there too.
+
+The description is capped at 1400 characters and the stored copy was written for
+Flipkart's 5000, so some paths overflow on their own: the wall hanging's ran to
+1652 and had to be trimmed to a sentence boundary before Meesho would accept it.
+
+"Update Changes" appears for some categories and not others — the muslin went
+straight from the declaration to Proceed. Both are treated as optional.
+
 ## Prices
 
 Set per price group by the seller and stored per path. MRP matches Flipkart; the
