@@ -134,7 +134,12 @@ export default function RunPanel({ path, running, progress, onStarted }) {
         const res = await fetch('/api/meesho/run', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pathId: path.id, submit: sendToQc }),
+          body: JSON.stringify({
+            pathId: path.id,
+            frontImages: fronts.map((f) => f.path),
+            repeat: cycles,
+            submit: sendToQc,
+          }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
@@ -407,9 +412,10 @@ export default function RunPanel({ path, running, progress, onStarted }) {
         </div>
         {partner === 'meesho' && (
           <p className="mt-2 text-xs text-slate-500">
-            Meesho lists one product per catalogue, so a multi-variant path lists only its
-            first variant, and set paths are not listed there at all. It takes four images:
-            the path's slot 4 becomes the front view, then slots 2, 3 and 5.
+            Every front image becomes its own Meesho catalogue with its own SKU, the same as
+            a Flipkart run. Meesho takes four images per product, so each listing is the front
+            image plus the path's saved slots 2, 3 and 5 — slot 4 does not fit. A multi-variant
+            path lists only its first variant, and set paths are not listed there.
           </p>
         )}
         {partner === 'meesho' && !path.meesho && (
