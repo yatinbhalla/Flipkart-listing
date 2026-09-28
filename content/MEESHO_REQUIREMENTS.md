@@ -73,6 +73,8 @@ values in a `meesho` block in its own config (kept local with the rest of
 | `included_components` | — | — | cotton |
 | `multipack` | 1 | — | 1 / 2 / 4 (the pack size) |
 | `product_unit` / `weight_unit` | Inch / g | — | Inch / g |
+| `hsn_code` | 392410 PVC / 630492 net | 611190 | 630492 |
+| `color` | as the path already states | White | remapped, see below |
 
 Two vocabulary gaps the seller settled:
 
@@ -80,6 +82,27 @@ Two vocabulary gaps the seller settled:
   covers list as **Fabric**. The four PVC covers list as PVC.
 - Meesho's pattern list has no "Floral". Printed is the catch-all; TC_BT is Solid,
   TC_NBR is Embroidery, and TC_MWCT_BGCK is Checked after its chequered lace.
+
+Colours needed no work on two categories: every table cover colour (White, Red,
+Multicolor, Brown, Beige, Black, Blue) and the blankets' White are already in
+Meesho's lists. The organisers are the exception — theirs are descriptive
+("Black Panda Print", "Charcoal Grey") and Meesho's palette is plain, so the
+seller chose each mapping:
+
+| Path colour | Meesho | | Path colour | Meesho |
+|---|---|---|---|---|
+| Charcoal Grey | Gray | | Black Panda Print | Gray |
+| Royal Blue | Blue | | Black Multicolour Floral | Multicolor |
+| Turquoise Blue | Green | | Black Blue Floral | Multicolor |
+| Mauve | Pink | | Cream Multicolour Print | Multicolor |
+| Pink Furry Check | Multi | | | |
+
+Two consequences worth knowing: Royal Blue and Turquoise Blue no longer share a
+colour, but four distinct prints all land on Multicolor, so those nine listings
+are colour-identical on Meesho.
+
+All three HSN codes the paths already use are offered by their Meesho category, so
+they carry over unchanged.
 
 **Wall Decor & Hangings does not describe these products.** `type` is mandatory and
 offers only Festive Toran, God related, Horses, Peacock style, Religious and
