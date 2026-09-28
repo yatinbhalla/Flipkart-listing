@@ -1,7 +1,10 @@
 # ─── SECURITY — never commit these ─────────────────────────────────────────────
 .env
 .env.local
+# Browser profiles hold live session cookies — one per storefront, because
+# Chromium allows a single instance per profile directory.
 data/.browser-profile/
+data/.meesho-profile/
 
 # ─── Private business data ─────────────────────────────────────────────────────
 # Path configs carry manufacturer/packer addresses, MRPs and selling prices.
