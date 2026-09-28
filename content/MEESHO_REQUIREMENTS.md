@@ -53,6 +53,42 @@ Field schemas: `content/MEESHO_*_SCHEMA.json`.
   run's Front View plus saved slots **img2, img3 and img5** — img4 does not fit.
 - Abandoning the form leaves **no draft** behind, unlike Flipkart.
 
-## Still to be supplied
+## Field mapping
 
-- The Meesho selling price for each of the 13 price groups.
+Meesho's vocabulary is not the seller's. Every value below was checked against the
+option list read off the live form; a value that is not on the list is rejected
+silently, so none of these are guesses. Each in-scope path carries the resolved
+values in a `meesho` block in its own config (kept local with the rest of
+`data/paths`).
+
+| Meesho field | Table Cloths | Baby Blanket | Wall Decor & Hangings |
+|---|---|---|---|
+| `generic_name` | Table Cloths | Baby Blanket | Wall Decor & Hangings |
+| `supplier_gst_percent` | 18 PVC / 5 net | 5 | 5 |
+| `material` | PVC or **Fabric** | — | Fabric |
+| `pattern` | Printed / Solid / Checked / Embroidery | — | — |
+| `type` | — | Dohar | Scenery |
+| `fabric` | — | Cotton | — |
+| `ideal_for` | — | Baby | All Purpose |
+| `included_components` | — | — | cotton |
+| `multipack` | 1 | — | 1 / 2 / 4 (the pack size) |
+| `product_unit` / `weight_unit` | Inch / g | — | Inch / g |
+
+Two vocabulary gaps the seller settled:
+
+- Meesho offers no "Cotton" and no "Net" material for table cloths, so the 14 net
+  covers list as **Fabric**. The four PVC covers list as PVC.
+- Meesho's pattern list has no "Floral". Printed is the catch-all; TC_BT is Solid,
+  TC_NBR is Embroidery, and TC_MWCT_BGCK is Checked after its chequered lace.
+
+**Wall Decor & Hangings does not describe these products.** `type` is mandatory and
+offers only Festive Toran, God related, Horses, Peacock style, Religious and
+Scenery — none of which is a three-pocket storage organiser. The seller chose to
+stay in the category and list them as **Scenery**. The alternative categories
+(Home Utility > Home Storage & Organization > Organisers, and Home & Living > Home
+Utility > Organisers) were not explored.
+
+## Prices
+
+Set per price group by the seller and stored per path. MRP matches Flipkart; the
+selling price does not, and runs 26-52% below it.
