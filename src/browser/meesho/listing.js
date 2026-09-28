@@ -50,6 +50,26 @@ export function meeshoDescription(copy) {
   return desc;
 }
 
+/** Wait for a thing to appear rather than sleeping a guessed number of seconds. */
+export async function appears(page, selector, timeout = 30000) {
+  return page
+    .locator(selector)
+    .first()
+    .waitFor({ state: 'visible', timeout })
+    .then(() => true)
+    .catch(() => false);
+}
+
+/** Wait for a thing to go away — an upload control that vanishes when the set is full. */
+export async function vanishes(page, selector, timeout = 45000) {
+  return page
+    .locator(selector)
+    .first()
+    .waitFor({ state: 'detached', timeout })
+    .then(() => true)
+    .catch(() => false);
+}
+
 export function createFiller(page, log) {
   const problems = [];
   const has = async (sel) => (await page.locator(sel).count()) > 0;
@@ -81,12 +101,13 @@ export function createFiller(page, log) {
     for (const v of wanted) {
       try {
         await page.locator(sel).first().click({ timeout: 15000 });
-        await page.waitForTimeout(1200);
+        // The list is what we are waiting for, so wait for the list.
+        await appears(page, '[role="listbox"], ul.MuiMenu-list, .MuiAutocomplete-listbox', 6000);
 
         const box = page.locator(SEARCH_BOX).first();
         if (await box.isVisible().catch(() => false)) {
           await box.fill(v).catch(() => {});
-          await page.waitForTimeout(1500);
+          await page.waitForTimeout(600);
         }
 
         let option = page.getByRole('option', { name: v, exact: true }).first();
@@ -107,12 +128,12 @@ export function createFiller(page, log) {
 
         if (await option.isVisible().catch(() => false)) {
           await option.click({ timeout: 10000 });
-          await page.waitForTimeout(900);
+          await page.waitForTimeout(350);
           log(`  picked ${what} = ${v}`);
           return v;
         }
         await page.keyboard.press('Escape').catch(() => {});
-        await page.waitForTimeout(400);
+        await page.waitForTimeout(250);
       } catch {
         await page.keyboard.press('Escape').catch(() => {});
       }
@@ -141,9 +162,9 @@ export function createFiller(page, log) {
       await el.click({ timeout: 10000 }).catch(() => {});
       await page.keyboard.press('Control+A').catch(() => {});
       await page.keyboard.press('Delete').catch(() => {});
-      await page.waitForTimeout(400);
-      await el.type(String(value), { delay: 70 }).catch(() => {});
-      await page.waitForTimeout(1400);
+      await page.waitForTimeout(200);
+      await el.type(String(value), { delay: 35 }).catch(() => {});
+      await page.waitForTimeout(700);
       const got = await el.inputValue().catch(() => '');
       if (got === String(value)) return log(`  typed ${what} = ${value}`);
       log(`  ${what} attempt ${i} gave "${got}"`);
@@ -180,26 +201,31 @@ export async function createListing(page, { path: cfg, variant, sku, images, sub
 
   log(`== category: ${M.category}`);
   await page.goto(SELECT_CATEGORY_URL, { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(8000);
+  await appears(page, 'input[placeholder*="Sarees" i]', 40000);
   // Search on the leaf name: the typeahead misses on a fragment ("wall decor" finds
   // nothing where "wall decor & hangings" finds the category).
   await page
     .locator('input[placeholder*="Sarees" i]')
     .first()
     .fill(M.category.split('>').pop().trim());
-  await page.waitForTimeout(4500);
+  if (!(await appears(page, `text="${M.category}"`, 25000))) {
+    throw new Error(`The typeahead never offered "${M.category}".`);
+  }
   await page.locator(`text="${M.category}"`).first().click();
-  await page.waitForTimeout(6000);
+  await appears(page, 'button:has-text("Add Product Images")', 30000);
 
   log('== front image');
   const chooser = page.waitForEvent('filechooser', { timeout: 25000 });
   await page.locator('button:has-text("Add Product Images")').first().click();
   (await chooser).setFiles(images.front);
-  await page.waitForTimeout(15000);
+  // The Continue button only lights up once the upload has landed.
+  await appears(page, 'button:has-text("Continue")', 90000);
   const cont = page.locator('button:has-text("Continue")').first();
   if (await cont.isVisible().catch(() => false)) {
     await cont.click();
-    await page.waitForTimeout(12000);
+    if (!(await appears(page, '#supplier_gst_percent', 60000))) {
+      throw new Error('The product details form never rendered after Continue.');
+    }
   }
 
   log('== product, size and inventory');
@@ -214,16 +240,17 @@ export async function createListing(page, { path: cfg, variant, sku, images, sub
   // option's text is a no-op, so the box itself has to be clicked.
   log('== size column');
   await page.locator('input[placeholder="Select"]:not([name])').first().click();
-  await page.waitForTimeout(2500);
+  await appears(page, 'text="Free Size"', 12000);
   const box = await page.locator('text="Free Size"').first().boundingBox().catch(() => null);
   if (box) {
     await page.mouse.click(box.x - 18, box.y + box.height / 2);
-    await page.waitForTimeout(1200);
+    await page.waitForTimeout(500);
   }
   const apply = page.locator('button:has-text("Apply")').first();
   if (await apply.isVisible().catch(() => false)) {
     await apply.click();
-    await page.waitForTimeout(6000);
+    // Choosing a size is what creates the price row; wait for the row, not the clock.
+    await appears(page, '#meesho_price', 30000);
   }
   const sizeColumn = await page
     .locator('input[placeholder="Select"]:not([name])')
@@ -241,7 +268,8 @@ export async function createListing(page, { path: cfg, variant, sku, images, sub
         f.problems.push('extra images');
         log(`  FAIL images: ${String(err.message).slice(0, 70)}`);
       });
-    await page.waitForTimeout(20000);
+    // The control disappears once the fourth image is present — that is the signal.
+    await vanishes(page, 'text="Add Images"', 90000);
   }
 
   // Price before MRP so Meesho's own figures settle first, and the two volatile
@@ -318,27 +346,83 @@ export async function createListing(page, { path: cfg, variant, sku, images, sub
 
   log('== submit');
   await page.locator('role=button[name="Submit Catalog"]').first().click({ timeout: 20000 });
-  await page.waitForTimeout(6000);
-  await clearBrandGate(page, log);
+  return finishSubmission(page, log);
+}
 
-  const declaration = page.locator('text=I understand that all products').first();
-  if (await declaration.isVisible().catch(() => false)) {
-    const db = await declaration.boundingBox();
-    if (db) await page.mouse.click(db.x - 18, db.y + db.height / 2);
-    await page.waitForTimeout(2000);
-  }
-  // Update Changes appears for some categories and not others.
-  for (const name of ['Update Changes', 'Proceed']) {
-    const button = page.locator(`role=button[name="${name}"]`).first();
-    if (await button.isVisible().catch(() => false)) {
-      await button.click({ timeout: 15000 }).catch(() => {});
-      await page.waitForTimeout(6000);
+/**
+ * See the submission through, whatever Meesho puts in the way.
+ *
+ * What follows Submit Catalog is not a fixed sequence. Sometimes a declaration
+ * checkbox; sometimes a modal of flagged words to strike; sometimes Update Changes
+ * and Proceed, sometimes only one of them, sometimes neither. Checking for each in
+ * a fixed order — the way this used to — works only for the orders that have
+ * already been seen, and silently gives up the first time Meesho reorders them or
+ * is slow to render one.
+ *
+ * So this reacts to whatever is on screen instead: look, act on what is there, look
+ * again, until the form is gone from the page or nothing actionable is left.
+ */
+export async function finishSubmission(page, log, { timeout = 120000 } = {}) {
+  const deadline = Date.now() + timeout;
+  const clicked = [];
+  const off = () => !/\/single\/add/.test(page.url());
+
+  while (Date.now() < deadline) {
+    if (off()) {
+      log(`  submitted${clicked.length ? ` (via ${clicked.join(' → ')})` : ''}`);
+      return { ok: true, submitted: true, problems: [] };
     }
-  }
-  await page.waitForTimeout(8000);
 
-  const stuck = /\/single\/add/.test(page.url());
-  return { ok: !stuck, submitted: !stuck, problems: stuck ? await readErrors(page) : [] };
+    // The word gate first when present: Update Changes stays dead until it is clear.
+    if (await clearBrandGate(page, log)) {
+      clicked.push('brand gate');
+      continue;
+    }
+
+    // A declaration that is present but unticked. Ticking it is what enables the
+    // button that follows, so it is always worth doing before clicking anything.
+    const declaration = page.locator('text=I understand that all products').first();
+    if (await declaration.isVisible().catch(() => false)) {
+      const box = await declaration.boundingBox().catch(() => null);
+      if (box) {
+        await page.mouse.click(box.x - 18, box.y + box.height / 2);
+        await page.waitForTimeout(800);
+        clicked.push('declaration');
+        continue;
+      }
+    }
+
+    // Then whichever confirmation this catalogue happens to show.
+    let acted = false;
+    for (const name of ['Update Changes', 'Proceed', 'Confirm', 'Yes', 'Submit Catalog']) {
+      const button = page.locator(`role=button[name="${name}"]`).first();
+      if (!(await button.isVisible().catch(() => false))) continue;
+      if (await button.isDisabled().catch(() => false)) continue;
+      // Submit Catalog is only re-pressed if nothing else has happened yet, so a
+      // stalled dialog does not turn into a second submission.
+      if (name === 'Submit Catalog' && clicked.length) continue;
+      await button.click({ timeout: 15000 }).catch(() => {});
+      clicked.push(name);
+      acted = true;
+      await page.waitForTimeout(2500);
+      break;
+    }
+    if (acted) continue;
+
+    // Nothing to act on. If the form is reporting errors, it is not going to submit.
+    const errors = await readErrors(page);
+    if (errors.length) {
+      log(`  refused: ${errors.join(' | ')}`);
+      return { ok: false, submitted: false, problems: errors };
+    }
+    await page.waitForTimeout(1500);
+  }
+
+  return {
+    ok: false,
+    submitted: false,
+    problems: (await readErrors(page)).concat(`submission did not complete within ${timeout / 1000}s`),
+  };
 }
 
 /**
@@ -365,12 +449,12 @@ export async function clearBrandGate(page, log) {
       .first();
     if (!(await x.isVisible().catch(() => false))) break;
     await x.click({ timeout: 8000 }).catch(() => {});
-    await page.waitForTimeout(900);
+    await page.waitForTimeout(400);
   }
   const update = page.locator('role=button[name="Update Changes"]').first();
   if (await update.isVisible().catch(() => false)) {
     await update.click({ timeout: 15000 }).catch(() => {});
-    await page.waitForTimeout(7000);
+    await page.waitForTimeout(2500);
     log('  cleared the brand gate');
   }
   return true;
