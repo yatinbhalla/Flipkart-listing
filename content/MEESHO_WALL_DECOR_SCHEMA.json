@@ -1,0 +1,195 @@
+{
+  "marketplace": "Meesho",
+  "category": "Home & Kitchen > Home Decor > Decorative Accessories > Wall Decor & Hangings",
+  "discoveredAt": "2026-09-28",
+  "entry": "Catalog Uploads > Add Single Catalog",
+  "url": "https://supplier.meesho.com/panel/v3/new/cataloging/vaqbo/catalogs/single/add",
+  "fieldCount": 31,
+  "requiredLabels": [
+    "Size and Inventory GST",
+    "HSN Code",
+    "Find Relevant HSN Code Net Weight (gms)",
+    "Product Name",
+    "Size",
+    "Product Details Color",
+    "Generic Name",
+    "Ideal For",
+    "Included Components",
+    "Material",
+    "Net Quantity (N)",
+    "Product Breadth",
+    "Product Height",
+    "Product Length",
+    "Product Unit",
+    "Type",
+    "Weight",
+    "Weight Unit",
+    "COUNTRY OF ORIGIN",
+    "Manufacturer Name",
+    "Manufacturer Address",
+    "Manufacturer Pincode",
+    "Packer Name",
+    "Same as Manufacturer Details Packer Address",
+    "Packer Pincode",
+    "Importer Name",
+    "Importer Address",
+    "Importer Pincode"
+  ],
+  "fields": [
+    {
+      "name": "supplier_gst_percent",
+      "placeholder": "Select",
+      "control": "dropdown"
+    },
+    {
+      "name": "hsn_code",
+      "placeholder": "Select",
+      "control": "dropdown"
+    },
+    {
+      "name": "product_weight_in_gms",
+      "placeholder": "Enter Net Weight (gms)",
+      "control": "number"
+    },
+    {
+      "name": "supplier_product_id",
+      "placeholder": "Enter Style code/ Product ID (optional)",
+      "control": "text"
+    },
+    {
+      "name": "product_name",
+      "placeholder": "Enter Product Name",
+      "control": "text"
+    },
+    {
+      "name": null,
+      "placeholder": "Select",
+      "control": "dropdown"
+    },
+    {
+      "name": "color",
+      "placeholder": "Select",
+      "control": "dropdown"
+    },
+    {
+      "name": "generic_name",
+      "placeholder": "Select",
+      "control": "dropdown"
+    },
+    {
+      "name": "ideal_for",
+      "placeholder": "Select",
+      "control": "dropdown"
+    },
+    {
+      "name": "included_components",
+      "placeholder": "Enter Included Components",
+      "control": "text"
+    },
+    {
+      "name": "material",
+      "placeholder": "Select",
+      "control": "dropdown"
+    },
+    {
+      "name": "multipack",
+      "placeholder": "Select",
+      "control": "dropdown"
+    },
+    {
+      "name": "product_breadth",
+      "placeholder": "Select",
+      "control": "dropdown"
+    },
+    {
+      "name": "product_height",
+      "placeholder": "Select",
+      "control": "dropdown"
+    },
+    {
+      "name": "product_length",
+      "placeholder": "Select",
+      "control": "dropdown"
+    },
+    {
+      "name": "product_unit",
+      "placeholder": "Select",
+      "control": "dropdown"
+    },
+    {
+      "name": "type",
+      "placeholder": "Select",
+      "control": "dropdown"
+    },
+    {
+      "name": "weight",
+      "placeholder": "Select",
+      "control": "dropdown"
+    },
+    {
+      "name": "weight_unit",
+      "placeholder": "Select",
+      "control": "dropdown"
+    },
+    {
+      "name": "country_of_origin",
+      "placeholder": "Select",
+      "control": "dropdown"
+    },
+    {
+      "name": "manufacturer_name",
+      "placeholder": "Enter Manufacturer Name",
+      "control": "text"
+    },
+    {
+      "name": "manufacturer_address",
+      "placeholder": "Enter Manufacturer Address",
+      "control": "text"
+    },
+    {
+      "name": "manufacturer_pincode",
+      "placeholder": "Enter Manufacturer Pincode",
+      "control": "number"
+    },
+    {
+      "name": "packer_name",
+      "placeholder": "Enter Packer Name",
+      "control": "text"
+    },
+    {
+      "name": "packer_address",
+      "placeholder": "Enter Packer Address",
+      "control": "text"
+    },
+    {
+      "name": "packer_pincode",
+      "placeholder": "Enter Packer Pincode",
+      "control": "number"
+    },
+    {
+      "name": "importer_name",
+      "placeholder": "Enter Importer Name",
+      "control": "text"
+    },
+    {
+      "name": "importer_address",
+      "placeholder": "Enter Importer Address",
+      "control": "text"
+    },
+    {
+      "name": "importer_pincode",
+      "placeholder": "Enter Importer Pincode",
+      "control": "text"
+    },
+    {
+      "name": "brand",
+      "placeholder": "Select",
+      "control": "dropdown"
+    },
+    {
+      "name": "comment",
+      "placeholder": "Enter Description",
+      "control": "textarea"
+    }
+  ]
+}
