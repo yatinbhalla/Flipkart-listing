@@ -62,18 +62,21 @@ export async function selectPartner(page, partner, log) {
   // nothing, so every later step fails with a confusing "no suggestion matched".
   // Toggling away and back re-issues it. Observed on a clean page load, so this is
   // checked even when the wanted partner was already selected.
-  if (!(await hasVerticalCards(page))) {
-    log('Vertical list came back empty — re-toggling the partner switch…');
-    await pick(wanted === 'SHOPSY' ? 'FLIPKART' : 'SHOPSY').click({ timeout: 15000 });
-    await page.waitForTimeout(2500);
-    await pick(wanted).click({ timeout: 15000 });
-    await page.waitForTimeout(3000);
-    if (!(await hasVerticalCards(page))) {
+  // Re-toggled up to three times, not once: across a batch of nine listings this
+  // was the difference between two getting through and the rest failing, and one
+  // extra attempt is far cheaper than a lost listing.
+  for (let attempt = 1; !(await hasVerticalCards(page)); attempt++) {
+    if (attempt > 3) {
       throw new Error(
-        `Switched to ${wanted} but the vertical list never populated. Nothing can be ` +
-          `selected in this state.`,
+        `Switched to ${wanted} but the vertical list never populated after ${attempt - 1} ` +
+          `re-toggles. Nothing can be selected in this state.`,
       );
     }
+    log(`Vertical list came back empty — re-toggling the partner switch (${attempt}/3)…`);
+    await pick(wanted === 'SHOPSY' ? 'FLIPKART' : 'SHOPSY').click({ timeout: 15000 }).catch(() => {});
+    await page.waitForTimeout(2500);
+    await pick(wanted).click({ timeout: 15000 }).catch(() => {});
+    await page.waitForTimeout(3500);
   }
 
   log(`✓ Partner: ${wanted}`);
@@ -145,18 +148,43 @@ export async function selectVertical(page, verticalLabel, log, { partner = 'flip
   if (!(await page.locator('text=Please select a brand').count())) {
     const search = page.locator('input[placeholder*="Enter Product Name"]').first();
     if (await search.count()) {
-      // Search on the unprefixed name: it matches under either naming, where
-      // "Shopsy Table Cover" returns nothing at all once the prefix is dropped.
-      await search.fill(bare);
-      await page.waitForTimeout(2500);
-
       // Typeahead rows are full category paths — "Shopsy / Baby Bedding & Gear /
       // Shopsy Blanket" — so match on the segment after the last slash. A plain
       // substring match picks up neighbours like "ShopsyFridge Door Shelf" and
       // silently opens the wrong vertical, which only shows up as a baffling set
       // of fields several steps later.
       const rows = page.locator('li[class*="TypeAheadItemBox"]');
-      await rows.first().waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
+
+      /**
+       * Get the suggestion list open. Out of nine listings only two got past this
+       * step, always with "Offered: (none)".
+       *
+       * fill() sets the value and fires a single input event, which this typeahead
+       * does not always act on, and a list that has opened can close again before
+       * it is read. So the name goes in as real keystrokes, and if nothing appears
+       * the field is clicked to re-open the list it already has results for.
+       */
+      const openSuggestions = async () => {
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          await search.click({ timeout: 10000 }).catch(() => {});
+          await search.fill('').catch(() => {});
+          await page.waitForTimeout(300);
+          // Search on the unprefixed name: it matches under either naming, where
+          // "Shopsy Table Cover" returns nothing once the prefix is dropped.
+          await search.pressSequentially(bare, { delay: 60 }).catch(() => {});
+          await page.waitForTimeout(2000);
+          if (await rows.count()) return true;
+
+          // The seller's observation: clicking the box brings back a list that has
+          // closed without needing the text retyped.
+          await search.click({ timeout: 10000 }).catch(() => {});
+          await page.waitForTimeout(1500);
+          if (await rows.count()) return true;
+          log(`Suggestions did not open for "${bare}" (attempt ${attempt}/3).`);
+        }
+        return false;
+      };
+      await openSuggestions();
 
       // Normalise separators and spacing so a stored path matches however Flipkart
       // happens to space its own — " / " against "/" is not a difference worth
