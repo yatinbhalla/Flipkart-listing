@@ -67,7 +67,7 @@ export function buildSpecs(variant) {
 }
 
 /** Render the spec table as the tail of the description. */
-function renderSpecs(specs) {
+export function renderSpecs(specs) {
   if (!specs.length) return '';
   return `\n\nSpecifications\n${specs.map((s) => `${s.label}: ${s.value}`).join('\n')}`;
 }
@@ -115,8 +115,14 @@ export async function generateCopyPool(path, variant, count, log) {
       .slice(-3)
       .flatMap((c) => c.searchKeywords || [])
       .slice(0, 24);
+    // Titles converge faster than keywords do — the model reaches for the same
+    // noun order every time — so every title already used is passed back, not just
+    // the last few.
+    const usedTitles = pool.map((c) => c.modelName).filter(Boolean);
     try {
-      pool.push(await generateCopy(path, variant, log, { angle, avoid, index: i, total: count }));
+      pool.push(
+        await generateCopy(path, variant, log, { angle, avoid, usedTitles, index: i, total: count }),
+      );
     } catch (err) {
       // One refusal should not cost the whole pool — thirty calls is thirty chances
       // to hit a quota blip, and a pool of 28 is perfectly usable.
@@ -162,6 +168,10 @@ ${options.angle ? `7. This is version ${options.index + 1} of ${options.total} f
    contradict the details above.` : ''}
 ${options.avoid?.length ? `8. These phrases are already used by other versions; choose different ones:
    ${options.avoid.join(', ')}` : ''}
+${options.usedTitles?.length ? `9. These titles are already taken by other versions of this product. Yours must
+   differ from every one of them — reorder the attributes, lead with a different
+   one, or name a different detail:
+   ${options.usedTitles.map((t) => `- ${t}`).join('\n   ')}` : ''}
 
 Return JSON exactly:
 {

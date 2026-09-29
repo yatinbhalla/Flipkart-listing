@@ -14,6 +14,7 @@ import {
 } from '../store.js';
 import { ensureMinSize, ensureFlipkartFormat } from '../../images/normalize.js';
 import { generateCopy, generateCopyPool } from '../../ai/content.js';
+import { composeCopyPool } from '../../ai/compose.js';
 import { COPY_POOL_SIZE } from '../constants.js';
 import { broadcast } from '../index.js';
 
@@ -56,12 +57,17 @@ router.delete('/:id', async (req, res) => {
 //   force      — overwrite copy that already exists (default: skip those)
 //   count      — pool size (default COPY_POOL_SIZE). Regenerating replaces the
 //                whole pool, never tops it up: a half-old pool would drift in voice.
+//   compose    — build the pool from the path's own attributes instead of calling
+//                Gemini. Instant and free, which matters when filling the whole
+//                catalogue: thirty versions across every path is ~1,590 calls and
+//                runs into the rate limit long before it finishes. Gemini phrases
+//                better, so it stays the default for regenerating a single path.
 router.post('/:id/copy', async (req, res) => {
   try {
     const config = await getPath(req.params.id);
     if (!config) return res.status(404).json({ error: 'Path not found.' });
 
-    const { variantKey, force = false, count = COPY_POOL_SIZE } = req.body || {};
+    const { variantKey, force = false, count = COPY_POOL_SIZE, compose = false } = req.body || {};
     const size = Math.min(Math.max(Number(count) || COPY_POOL_SIZE, 1), 50);
     const log = (text) => broadcast({ type: 'info', text });
     const written = [];
@@ -70,7 +76,10 @@ router.post('/:id/copy', async (req, res) => {
       if (variantKey && variant.key !== variantKey) continue;
       if (variant.copyPool?.length && !force) continue;
       const resolved = resolveVariant(config, variant);
-      const pool = await generateCopyPool(config, resolved, size, log);
+      const pool = compose
+        ? composeCopyPool(config, resolved, size)
+        : await generateCopyPool(config, resolved, size, log);
+      if (compose) log(`Composed ${pool.length} versions for ${variant.label} (no AI call).`);
       variant.copyPool = pool;
       // The first of the pool stays on `copy` so anything reading a single copy —
       // the Copy panel, an older run — keeps working unchanged.
