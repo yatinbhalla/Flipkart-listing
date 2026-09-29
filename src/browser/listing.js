@@ -124,18 +124,30 @@ export async function selectVertical(page, verticalLabel, log, { partner = 'flip
   // name in different branches.
   const leaf = String(verticalLabel).split('/').pop().trim();
 
+  // Shopsy's verticals have been named both ways. They used to carry a "Shopsy "
+  // prefix — "Shopsy Table Cover" — and now show the plain name under a Flipkart /
+  // Shopsy slider instead. Which one is live is not worth betting a run on, so both
+  // forms are tried; the storefront itself is already set by the partner switch.
+  const bare = leaf.replace(/^shopsy\s+/i, '');
+  const names = [...new Set([leaf, bare, `Shopsy ${bare}`])];
+
   // Favourited verticals appear as cards under "Your Verticals" — cheapest path.
-  const card = page.locator('div').filter({ hasText: new RegExp(`^${leaf}$`) }).first();
-  if (await card.count()) {
-    await card.click().catch(() => {});
-    await page.waitForTimeout(1500);
+  for (const name of names) {
+    const card = page.locator('div').filter({ hasText: new RegExp(`^${name}$`) }).first();
+    if (await card.count()) {
+      await card.click().catch(() => {});
+      await page.waitForTimeout(1500);
+      if (await page.locator('text=Please select a brand').count()) break;
+    }
   }
 
   // Fall back to the search box if the card was not there.
   if (!(await page.locator('text=Please select a brand').count())) {
     const search = page.locator('input[placeholder*="Enter Product Name"]').first();
     if (await search.count()) {
-      await search.fill(leaf);
+      // Search on the unprefixed name: it matches under either naming, where
+      // "Shopsy Table Cover" returns nothing at all once the prefix is dropped.
+      await search.fill(bare);
       await page.waitForTimeout(2500);
 
       // Typeahead rows are full category paths — "Shopsy / Baby Bedding & Gear /
@@ -158,13 +170,14 @@ export async function selectVertical(page, verticalLabel, log, { partner = 'flip
 
       // A full-path match first: it is the only one that cannot pick the wrong
       // branch. Leaf matching stays as the fallback for paths stored as a bare name.
+      const wanted = names.map((n) => n.toLowerCase());
       let index = texts.findIndex((t) => norm(t) === wantFull);
-      if (index < 0) index = texts.findIndex((t) => tail(t) === wantLeaf);
-      if (index < 0) index = texts.findIndex((t) => tail(t).includes(wantLeaf));
+      if (index < 0) index = texts.findIndex((t) => wanted.includes(tail(t)));
+      if (index < 0) index = texts.findIndex((t) => wanted.some((w) => tail(t).includes(w)));
       if (index < 0) {
         throw new Error(
-          `Searched for "${verticalLabel}" but no suggestion matched. Offered: ` +
-            `${texts.slice(0, 6).join(' | ') || '(none)'}`,
+          `Searched for "${bare}" (also tried ${names.join(', ')}) but no suggestion ` +
+            `matched. Offered: ${texts.slice(0, 6).join(' | ') || '(none)'}`,
         );
       }
       // Log the row actually taken: it is the full category path, which is the value
