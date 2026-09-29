@@ -478,8 +478,19 @@ export async function openTab(page, tabName) {
     await dismissOverlays(page);
     await tab.click({ timeout: 15000 });
   });
-  await page.waitForTimeout(2500);
-  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+  // The tab reporting itself selected is the signal that the panel has swapped.
+  //
+  // This used to sleep 2.5s and then wait for networkidle, which Seller Hub never
+  // reaches — it polls in the background — so every tab switch paid the full 15s
+  // timeout. saveAndInspect opens two tabs per save, so that was most of the
+  // seventeen second gaps between filling one tab and the next.
+  await page
+    .locator('[role=tab][aria-selected="true"]')
+    .filter({ hasText: tabName })
+    .first()
+    .waitFor({ state: 'visible', timeout: 12000 })
+    .catch(() => {});
+  await page.waitForTimeout(600);
   await dismissOverlays(page);
 }
 

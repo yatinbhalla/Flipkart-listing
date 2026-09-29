@@ -95,7 +95,11 @@ function hasVerticalCards(page, timeout = 12000) {
 export async function selectVertical(page, verticalLabel, log, { partner = 'flipkart' } = {}) {
   log(`Opening the single-listing form…`);
   await page.goto(ADD_LISTING_URL, { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(4000);
+  await page
+    .locator('text=/Select The Vertical/i')
+    .first()
+    .waitFor({ state: 'visible', timeout: 25000 })
+    .catch(() => {});
 
   await F.dismissOverlays(page);
 
@@ -105,7 +109,7 @@ export async function selectVertical(page, verticalLabel, log, { partner = 'flip
   const picker = page.locator('text=/Select The Vertical/i').first();
   if (!(await picker.isVisible().catch(() => false))) {
     await page.reload({ waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(5000);
+    await picker.waitFor({ state: 'visible', timeout: 30000 }).catch(() => {});
   }
   await picker.waitFor({ state: 'visible', timeout: 45000 }).catch(() => {});
   await F.dismissOverlays(page);
@@ -139,7 +143,11 @@ export async function selectVertical(page, verticalLabel, log, { partner = 'flip
     const card = page.locator('div').filter({ hasText: new RegExp(`^${name}$`) }).first();
     if (await card.count()) {
       await card.click().catch(() => {});
-      await page.waitForTimeout(1500);
+      await page
+        .locator('text=Please select a brand')
+        .first()
+        .waitFor({ state: 'visible', timeout: 8000 })
+        .catch(() => {});
       if (await page.locator('text=Please select a brand').count()) break;
     }
   }
@@ -212,7 +220,11 @@ export async function selectVertical(page, verticalLabel, log, { partner = 'flip
       // worth storing on the path so later runs match on the branch, not the leaf.
       log(`Matched vertical: ${texts[index].replace(/\s+/g, ' ').trim()}`);
       await rows.nth(index).click({ timeout: 15000 });
-      await page.waitForTimeout(2000);
+      await page
+        .locator('text=Please select a brand')
+        .first()
+        .waitFor({ state: 'visible', timeout: 15000 })
+        .catch(() => {});
     }
   }
 
@@ -245,7 +257,8 @@ export async function selectVertical(page, verticalLabel, log, { partner = 'flip
     await F.dismissOverlays(page);
     await proceed.click({ timeout: 15000 });
   });
-  await page.waitForTimeout(3000);
+  // No sleep here: the brand step is waited for explicitly a few lines below, so
+  // this was three seconds spent before starting that wait.
 
   // Only claim success once the brand step is actually on screen. Logging a tick
   // unconditionally here is what made a blank page look like a working run.
@@ -311,7 +324,12 @@ export async function selectBrand(page, brand, log) {
   }
 
   await create.click();
-  await page.waitForTimeout(5000);
+  // The form arriving is the signal, not five seconds passing.
+  await page
+    .locator('#thumbnail_0, [data-testid*="tabitem-tab_"]')
+    .first()
+    .waitFor({ state: 'visible', timeout: 45000 })
+    .catch(() => {});
   log(`✓ Brand: ${brand}`);
 }
 
@@ -724,12 +742,13 @@ export async function sendToQc(page, log) {
     throw new Error('"Send to QC" is disabled — the form still has unresolved errors.');
   }
   await btn.click();
-  await page.waitForTimeout(8000);
-
+  // Wait for the confirmation, up to the same eight seconds this used to sleep
+  // through unconditionally — it usually appears in about one.
   const banner = await page
     .locator('text=/sent for Quality Check successfully/i')
     .first()
-    .isVisible()
+    .waitFor({ state: 'visible', timeout: 20000 })
+    .then(() => true)
     .catch(() => false);
   if (!banner) {
     throw new Error('Clicked Send to QC but no success confirmation appeared. Check the browser.');
