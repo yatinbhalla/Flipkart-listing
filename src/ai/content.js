@@ -76,7 +76,58 @@ function renderSpecs(specs) {
  * Generate and return the copy bundle for one variant. Callers persist the result
  * onto the path; nothing here writes to disk.
  */
-export async function generateCopy(path, variant, log) {
+/**
+ * Angles to write from, so a pool of variants does not converge on one voice.
+ *
+ * Left to itself the model writes the same listing thirty times with the nouns
+ * shuffled. Naming a different buyer question each time is what actually moves the
+ * keywords apart, which is the whole point of having a pool.
+ */
+const ANGLES = [
+  'what it protects the table from day to day',
+  'how quickly it wipes clean and why that matters',
+  'who the size suits and which rooms it fits',
+  'how it compares to a fabric cover a buyer might own',
+  'the look and finish, described plainly',
+  'gifting and festive use',
+  'care, washing and how long it lasts',
+  'why the material was chosen for this use',
+  'small-home and rented-flat practicality',
+  'what a first-time buyer should check before ordering',
+];
+
+/**
+ * A pool of distinct copy for one variant.
+ *
+ * Runs list the same product many times over, one image each. With a single stored
+ * copy every one of those listings goes out word for word identical, which wastes
+ * the chance to cover different search phrasings — and repeats in text the pattern
+ * that already got a listing rejected for duplicate images.
+ *
+ * Generated deliberately and stored, never per run: a fifty-image batch still makes
+ * no AI calls.
+ */
+export async function generateCopyPool(path, variant, count, log) {
+  const pool = [];
+  for (let i = 0; i < count; i++) {
+    const angle = ANGLES[i % ANGLES.length];
+    const avoid = pool
+      .slice(-3)
+      .flatMap((c) => c.searchKeywords || [])
+      .slice(0, 24);
+    try {
+      pool.push(await generateCopy(path, variant, log, { angle, avoid, index: i, total: count }));
+    } catch (err) {
+      // One refusal should not cost the whole pool — thirty calls is thirty chances
+      // to hit a quota blip, and a pool of 28 is perfectly usable.
+      log(`  variant ${i + 1}/${count} failed: ${err.message}`);
+    }
+  }
+  if (!pool.length) throw new Error(`No copy could be generated for ${variant.label}.`);
+  return pool;
+}
+
+export async function generateCopy(path, variant, log, options = {}) {
   const size = `${variant.sizeInches.width}x${variant.sizeInches.length} inch`;
   const specs = buildSpecs(variant);
 
@@ -105,6 +156,12 @@ HARD RULES
 5. Do NOT write a specifications list — one is appended automatically from the
    structured product data. End with the care instructions instead.
 6. Body text must be under 3500 characters.
+${options.angle ? `7. This is version ${options.index + 1} of ${options.total} for the SAME product,
+   each going on its own listing. Lead with: ${options.angle}. Say the same facts a
+   different way — different sentence shapes, different search phrasings. Never
+   contradict the details above.` : ''}
+${options.avoid?.length ? `8. These phrases are already used by other versions; choose different ones:
+   ${options.avoid.join(', ')}` : ''}
 
 Return JSON exactly:
 {
@@ -114,8 +171,13 @@ Return JSON exactly:
   "modelName": "one keyword-rich title-style line naming the size and key attributes"
 }`;
 
-  log(`Writing copy for ${variant.label} (${size})…`);
-  const out = await callGeminiJSON(prompt, { log, temperature: 0.6 });
+  log(
+    options.total
+      ? `Writing copy ${options.index + 1}/${options.total} for ${variant.label} (${size})…`
+      : `Writing copy for ${variant.label} (${size})…`,
+  );
+  // Warmer for a pool: the variants have to differ from each other to be worth having.
+  const out = await callGeminiJSON(prompt, { log, temperature: options.total ? 0.95 : 0.6 });
 
   const brandWords = [path.brand, ...BANNED_HINTS]
     .filter(Boolean)
@@ -142,7 +204,27 @@ Return JSON exactly:
   // How many pills the field really accepts is not settled: live listings went out
   // with 10, so any lower cap is applied by Flipkart after QC rather than by the
   // widget. `setPills` reports whatever does not fit instead of failing the run.
-  const mustHave = (path.extraKeywords || []).map((k) => String(k).trim()).filter(Boolean);
+  const sellerKeywords = (path.extraKeywords || []).map((k) => String(k).trim()).filter(Boolean);
+
+  // A pool exists to spread the keywords out, so the seller's fixed list cannot take
+  // every slot. Several paths pin ten — the whole cap — which left all thirty
+  // versions with byte-identical keywords and defeated the point entirely.
+  //
+  // The first few are pinned to every listing because they are the terms buyers
+  // actually type. The remainder rotate, two per version, and what is left over is
+  // the model's to fill — so each listing carries the core terms plus a different
+  // tail.
+  const PINNED = 4;
+  const ROTATING = 2;
+  let mustHave = sellerKeywords;
+  if (options.total > 1 && sellerKeywords.length > PINNED) {
+    const spares = sellerKeywords.slice(PINNED);
+    const rotated = Array.from(
+      { length: Math.min(ROTATING, spares.length) },
+      (_, k) => spares[(options.index * ROTATING + k) % spares.length],
+    );
+    mustHave = [...sellerKeywords.slice(0, PINNED), ...rotated];
+  }
   const seen = new Set();
   const searchKeywords = [...mustHave, ...(out.searchKeywords || []).map(scrub)]
     .map((k) => k.trim())

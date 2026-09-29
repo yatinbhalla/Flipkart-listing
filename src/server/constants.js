@@ -31,3 +31,13 @@ export function variantNeedsImage(variant) {
   if (!axis) return false; // the parent row has no axis and uses the main picker
   return !AXES_SHARING_PARENT_IMAGE.has(axis);
 }
+
+/**
+ * How many distinct versions of the copy each variant carries.
+ *
+ * A run lists one product many times over with a different image each, and listing
+ * N takes pool[N % size] — so at 30 a fifty-image batch repeats a given wording
+ * twice rather than fifty times. Generated once and stored, so a run still makes no
+ * AI calls.
+ */
+export const COPY_POOL_SIZE = 30;

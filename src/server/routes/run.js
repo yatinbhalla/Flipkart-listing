@@ -57,10 +57,17 @@ async function findDuplicateImages(fronts, shared) {
  *
  * Copy is read from the path, never generated here. A run makes no AI calls.
  */
-async function buildListing(path) {
+/**
+ * `index` selects which of the stored copy variants this listing uses.
+ *
+ * A batch lists the same product many times over with one image each; taking
+ * pool[index % size] means those listings go out with different wording instead of
+ * the same paragraph repeated, without costing an AI call during the run.
+ */
+async function buildListing(path, index = 0) {
   const out = [];
   for (const variant of path.variants) {
-    if (!variant.copy) {
+    if (!variant.copy && !variant.copyPool?.length) {
       throw new Error(
         `No saved copy for variant "${variant.label || variant.key}". ` +
           `Generate it once from the Copy panel, then run.`,
@@ -69,7 +76,8 @@ async function buildListing(path) {
     const v = resolveVariant(path, variant);
     v.sku = await allocateSku(variant.skuPattern || path.skuPattern);
     v.modelNumber = v.sku; // Model Number mirrors the SKU exactly.
-    Object.assign(v, variant.copy);
+    const pool = variant.copyPool?.length ? variant.copyPool : [variant.copy];
+    Object.assign(v, pool[index % pool.length]);
 
     // Append the SKU to Model Name when the path asks for it. This has to happen
     // here rather than in the stored copy: the SKU is allocated per listing, so a
@@ -310,7 +318,7 @@ router.post('/', async (req, res) => {
 
       try {
         // SKUs are allocated per listing, so each one in the batch is unique.
-        const resolved = await buildListing(path);
+        const resolved = await buildListing(path, i);
         const parent = resolved[0];
         broadcast({
           type: 'event',

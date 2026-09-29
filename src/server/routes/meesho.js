@@ -18,17 +18,23 @@ function isSetPath(path) {
   return /_SET$/i.test(String(path.skuPattern || '').replace(/\{X\}/g, '').replace(/\/+$/, ''));
 }
 
-/** One listing's worth of resolved data, with a freshly allocated SKU. */
-async function buildOne(path) {
+/**
+ * One listing's worth of resolved data, with a freshly allocated SKU.
+ *
+ * `index` picks the stored copy variant, so a batch of the same product goes out
+ * with different titles and descriptions rather than the same words every time.
+ */
+async function buildOne(path, index = 0) {
   const variant = path.variants[0];
-  if (!variant.copy) {
+  if (!variant.copy && !variant.copyPool?.length) {
     throw new Error(
       `No saved copy for "${variant.label || variant.key}". Generate it from the Copy panel first.`,
     );
   }
   const v = resolveVariant(path, variant);
   v.sku = await allocateSku(variant.skuPattern || path.skuPattern);
-  Object.assign(v, variant.copy);
+  const pool = variant.copyPool?.length ? variant.copyPool : [variant.copy];
+  Object.assign(v, pool[index % pool.length]);
   return v;
 }
 
@@ -91,7 +97,7 @@ router.post('/run', async (req, res) => {
       let sku = null;
       try {
         // A SKU per listing, so every catalogue in the batch is unique.
-        const variant = await buildOne(path);
+        const variant = await buildOne(path, i);
         sku = variant.sku;
         broadcast({ type: 'event', event: 'item-start', index: i, total: fronts.length, sku });
         log(`── ${label} · ${sku} ₹${path.meesho.sellingPrice} ──`);

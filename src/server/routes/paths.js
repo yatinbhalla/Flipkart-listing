@@ -13,7 +13,8 @@ import {
   SHARED_SLOTS,
 } from '../store.js';
 import { ensureMinSize, ensureFlipkartFormat } from '../../images/normalize.js';
-import { generateCopy } from '../../ai/content.js';
+import { generateCopy, generateCopyPool } from '../../ai/content.js';
+import { COPY_POOL_SIZE } from '../constants.js';
 import { broadcast } from '../index.js';
 
 const router = express.Router();
@@ -45,24 +46,36 @@ router.delete('/:id', async (req, res) => {
 // the same product go out with different words. Generate deliberately, review it,
 // then every run just reads it back.
 //
-// Body: { variantKey?: string, force?: boolean }
+// Each variant gets a POOL of distinct copy rather than one version, because a run
+// lists the same product many times over with one image each — identical wording on
+// all of them wastes the chance to cover different search phrasings. Listing N uses
+// pool[N % pool.length], so a batch still makes no AI calls.
+//
+// Body: { variantKey?: string, force?: boolean, count?: number }
 //   variantKey — regenerate just one variant, otherwise all of them
 //   force      — overwrite copy that already exists (default: skip those)
+//   count      — pool size (default COPY_POOL_SIZE). Regenerating replaces the
+//                whole pool, never tops it up: a half-old pool would drift in voice.
 router.post('/:id/copy', async (req, res) => {
   try {
     const config = await getPath(req.params.id);
     if (!config) return res.status(404).json({ error: 'Path not found.' });
 
-    const { variantKey, force = false } = req.body || {};
+    const { variantKey, force = false, count = COPY_POOL_SIZE } = req.body || {};
+    const size = Math.min(Math.max(Number(count) || COPY_POOL_SIZE, 1), 50);
     const log = (text) => broadcast({ type: 'info', text });
     const written = [];
 
     for (const variant of config.variants) {
       if (variantKey && variant.key !== variantKey) continue;
-      if (variant.copy && !force) continue;
+      if (variant.copyPool?.length && !force) continue;
       const resolved = resolveVariant(config, variant);
-      variant.copy = await generateCopy(config, resolved, log);
-      written.push(variant.key);
+      const pool = await generateCopyPool(config, resolved, size, log);
+      variant.copyPool = pool;
+      // The first of the pool stays on `copy` so anything reading a single copy —
+      // the Copy panel, an older run — keeps working unchanged.
+      variant.copy = pool[0];
+      written.push(`${variant.key} (${pool.length})`);
     }
 
     if (!written.length) {
