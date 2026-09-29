@@ -330,7 +330,14 @@ router.post('/', async (req, res) => {
         });
         log(`── ${label} · ${describeListing(resolved)} ──`);
 
-        await L.selectVertical(page, verticalFor(path.vertical, partner), log, { partner });
+        // A path may pin the full category path for either storefront. Addressing a
+        // vertical by its whole branch rather than a leaf name is what stops two
+        // same-named leaves in different branches being confused for each other.
+        const wantedVertical =
+          String(partner).toLowerCase() === 'shopsy'
+            ? path.shopsyVerticalPath || verticalFor(path.vertical, partner)
+            : path.verticalPath || path.vertical;
+        await L.selectVertical(page, wantedVertical, log, { partner });
         await L.selectBrand(page, path.brand, log);
         await L.uploadImages(page, [front, ...shared], log);
 

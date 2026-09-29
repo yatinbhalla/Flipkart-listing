@@ -117,8 +117,15 @@ export async function selectVertical(page, verticalLabel, log, { partner = 'flip
   // underneath, so choosing it afterwards would mean picking from the wrong catalogue.
   await selectPartner(page, partner, log);
 
+  // A vertical may be given as a full category path — "Home & Kitchen Accessories /
+  // Kitchen & Table Linen / Table Cover" — or as the bare leaf. Cards and the search
+  // box both work on the leaf; the typeahead rows carry the whole path, which is
+  // what makes a full path worth storing: it distinguishes two leaves of the same
+  // name in different branches.
+  const leaf = String(verticalLabel).split('/').pop().trim();
+
   // Favourited verticals appear as cards under "Your Verticals" — cheapest path.
-  const card = page.locator('div').filter({ hasText: new RegExp(`^${verticalLabel}$`) }).first();
+  const card = page.locator('div').filter({ hasText: new RegExp(`^${leaf}$`) }).first();
   if (await card.count()) {
     await card.click().catch(() => {});
     await page.waitForTimeout(1500);
@@ -128,7 +135,7 @@ export async function selectVertical(page, verticalLabel, log, { partner = 'flip
   if (!(await page.locator('text=Please select a brand').count())) {
     const search = page.locator('input[placeholder*="Enter Product Name"]').first();
     if (await search.count()) {
-      await search.fill(verticalLabel);
+      await search.fill(leaf);
       await page.waitForTimeout(2500);
 
       // Typeahead rows are full category paths — "Shopsy / Baby Bedding & Gear /
@@ -139,18 +146,30 @@ export async function selectVertical(page, verticalLabel, log, { partner = 'flip
       const rows = page.locator('li[class*="TypeAheadItemBox"]');
       await rows.first().waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
 
-      const want = verticalLabel.trim().toLowerCase();
+      // Normalise separators and spacing so a stored path matches however Flipkart
+      // happens to space its own — " / " against "/" is not a difference worth
+      // failing a run over.
+      const norm = (t) =>
+        String(t).replace(/\s*\/\s*/g, ' / ').replace(/\s+/g, ' ').trim().toLowerCase();
       const tail = (t) => String(t).split('/').pop().trim().toLowerCase();
+      const wantFull = norm(verticalLabel);
+      const wantLeaf = leaf.toLowerCase();
       const texts = await rows.allInnerTexts().catch(() => []);
 
-      let index = texts.findIndex((t) => tail(t) === want);
-      if (index < 0) index = texts.findIndex((t) => tail(t).includes(want));
+      // A full-path match first: it is the only one that cannot pick the wrong
+      // branch. Leaf matching stays as the fallback for paths stored as a bare name.
+      let index = texts.findIndex((t) => norm(t) === wantFull);
+      if (index < 0) index = texts.findIndex((t) => tail(t) === wantLeaf);
+      if (index < 0) index = texts.findIndex((t) => tail(t).includes(wantLeaf));
       if (index < 0) {
         throw new Error(
           `Searched for "${verticalLabel}" but no suggestion matched. Offered: ` +
             `${texts.slice(0, 6).join(' | ') || '(none)'}`,
         );
       }
+      // Log the row actually taken: it is the full category path, which is the value
+      // worth storing on the path so later runs match on the branch, not the leaf.
+      log(`Matched vertical: ${texts[index].replace(/\s+/g, ' ').trim()}`);
       await rows.nth(index).click({ timeout: 15000 });
       await page.waitForTimeout(2000);
     }
