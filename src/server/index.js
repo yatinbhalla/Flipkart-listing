@@ -40,8 +40,39 @@ wss.on('connection', () => broadcast({ type: 'info', text: 'Connected to Flipkar
 // profile and the same half-built form.
 let activeRun = null;
 export const getActiveRun = () => activeRun;
-export const setActiveRun = (v) => { activeRun = v; };
-export const clearActiveRun = () => { activeRun = null; };
+export const setActiveRun = (v) => {
+  activeRun = v;
+  stopRequested = false; // a fresh run never inherits the last one's stop
+};
+export const clearActiveRun = () => {
+  activeRun = null;
+  stopRequested = false;
+};
+
+/**
+ * Stopping a run.
+ *
+ * Closing the browser was the only way out, which loses the session and leaves
+ * whatever was half-typed on screen. A run now checks this at each step boundary,
+ * so a mistake — the wrong image picked for a path, most obviously — costs one
+ * partly-built draft rather than a whole batch.
+ */
+let stopRequested = false;
+export const requestStop = () => {
+  stopRequested = true;
+};
+export const isStopRequested = () => stopRequested;
+
+/** Throw out of a run loop at the next checkpoint. */
+export class RunStopped extends Error {
+  constructor() {
+    super('Run stopped.');
+    this.name = 'RunStopped';
+  }
+}
+export function throwIfStopped() {
+  if (stopRequested) throw new RunStopped();
+}
 
 app.use(cors());
 app.use(express.json({ limit: '4mb' }));

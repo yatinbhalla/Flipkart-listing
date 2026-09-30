@@ -1,7 +1,15 @@
 import express from 'express';
 import fs from 'fs/promises';
 import crypto from 'crypto';
-import { broadcast, getActiveRun, setActiveRun, clearActiveRun } from '../index.js';
+import {
+  broadcast,
+  getActiveRun,
+  setActiveRun,
+  clearActiveRun,
+  throwIfStopped,
+  RunStopped,
+  requestStop,
+} from '../index.js';
 import {
   getPath,
   allocateSku,
@@ -91,6 +99,20 @@ async function buildListing(path, index = 0) {
   }
   return out;
 }
+
+/**
+ * POST /api/run/stop — end the run at its next checkpoint.
+ *
+ * Deliberately cooperative rather than killing the browser: the session stays
+ * signed in, and whatever is on screen can be looked at and deleted. The run stops
+ * between steps, so the wait is seconds rather than the rest of the batch.
+ */
+router.post('/stop', (_req, res) => {
+  if (!getActiveRun()) return res.status(409).json({ error: 'No run is in progress.' });
+  requestStop();
+  broadcast({ type: 'info', text: 'Stopping after the current step…' });
+  res.json({ stopping: true });
+});
 
 // ─── POST /api/run/preview — allocate SKUs and show what would be listed ──────
 // Reads stored copy; touches neither Gemini nor the browser.
@@ -317,6 +339,9 @@ router.post('/', async (req, res) => {
       const label = `listing ${i + 1}/${fronts.length}`;
 
       try {
+        // Between listings: the cheapest place to stop, since nothing is half-built.
+        throwIfStopped();
+
         // SKUs are allocated per listing, so each one in the batch is unique.
         const resolved = await buildListing(path, i);
         const parent = resolved[0];
@@ -338,10 +363,16 @@ router.post('/', async (req, res) => {
             ? path.shopsyVerticalPath || verticalFor(path.vertical, partner)
             : path.verticalPath || path.vertical;
         await L.selectVertical(page, wantedVertical, log, { partner });
+        throwIfStopped();
         await L.selectBrand(page, path.brand, log);
+        throwIfStopped();
+        // Checked before the images especially: a wrong image is the reason to stop,
+        // and stopping here means nothing has been uploaded yet.
         await L.uploadImages(page, [front, ...shared], log);
+        throwIfStopped();
 
         await L.fillTabs(page, path, parent, log, { partner });
+        throwIfStopped();
         // Slots 2–5 per variant: the path's reused set, with any per-variant file
         // (typically the slot-4 pack-size shot) swapped in.
         const variantShared = {};
@@ -380,6 +411,24 @@ router.post('/', async (req, res) => {
           ok: true,
         });
       } catch (err) {
+        // A stop is a decision, not a failure: end the batch quietly rather than
+        // logging it as an error and pressing on to the next image.
+        if (err instanceof RunStopped) {
+          broadcast({
+            type: 'event',
+            event: 'item-done',
+            index: i,
+            ok: false,
+            error: 'stopped',
+          });
+          broadcast({
+            type: 'info',
+            text:
+              `Stopped during ${label}. Anything already on screen is left as a ` +
+              `part-built draft — delete it in the browser if it is not wanted.`,
+          });
+          break;
+        }
         // One bad listing should not abandon the other 49.
         failed.push({ index: i, error: err.message });
         fail(`${label} failed: ${err.message}`);

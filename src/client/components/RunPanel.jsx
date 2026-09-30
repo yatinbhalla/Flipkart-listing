@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 // One definition, shared with the run route — a client-side copy of either of these
 // silently drifted once already and cost a run.
 import { MAX_BATCH, variantNeedsImage } from '../../server/constants.js';
@@ -25,6 +25,13 @@ export default function RunPanel({ path, running, progress, onStarted }) {
   // Which storefront this run lists on. Flipkart and Shopsy are separate
   // catalogues, so the same path is run once for each.
   const [partner, setPartner] = useState('flipkart');
+  const [stopping, setStopping] = useState(false);
+
+  // Clear it when the run ends, or the next run opens with the Stop button already
+  // greyed out and reading "Stopping…".
+  useEffect(() => {
+    if (!running) setStopping(false);
+  }, [running]);
 
   const imageVariants = path.variants.filter(variantNeedsImage);
   // A per-listing photo can't vary across a batch, so those paths list one at a time.
@@ -488,6 +495,34 @@ export default function RunPanel({ path, running, progress, onStarted }) {
                 totalListings > 1 ? ` — ${totalListings} listings` : ''
               }`}
         </button>
+
+        {/* Only while something is running. Closing the browser used to be the only
+            way out of a batch started with the wrong image, which loses the signed-in
+            session along with it. */}
+        {running && (
+          <>
+            <button
+              onClick={async () => {
+                setStopping(true);
+                try {
+                  const res = await fetch('/api/run/stop', { method: 'POST' });
+                  if (!res.ok) setError((await res.json()).error);
+                } catch (err) {
+                  setError(err.message);
+                }
+              }}
+              disabled={stopping}
+              className="mt-2 w-full rounded-lg border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 disabled:opacity-40"
+            >
+              {stopping ? 'Stopping after this step…' : 'Stop the run'}
+            </button>
+            <p className="mt-1 text-xs text-slate-500">
+              Stops at the next step rather than mid-keystroke, so it takes a few seconds.
+              Listings already finished are kept; the one in progress is left as a
+              part-built draft to delete.
+            </p>
+          </>
+        )}
       </div>
     </div>
   );

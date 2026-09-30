@@ -1,5 +1,12 @@
 import express from 'express';
-import { broadcast, getActiveRun, setActiveRun, clearActiveRun } from '../index.js';
+import {
+  broadcast,
+  getActiveRun,
+  setActiveRun,
+  clearActiveRun,
+  throwIfStopped,
+  RunStopped,
+} from '../index.js';
 import { getPath, allocateSku, sharedImagePaths, resolveVariant } from '../store.js';
 import { getMeeshoSession } from '../../browser/meesho/session.js';
 import { createListing } from '../../browser/meesho/listing.js';
@@ -96,12 +103,14 @@ router.post('/run', async (req, res) => {
       const label = `listing ${i + 1}/${fronts.length}`;
       let sku = null;
       try {
+        throwIfStopped();
         // A SKU per listing, so every catalogue in the batch is unique.
         const variant = await buildOne(path, i);
         sku = variant.sku;
         broadcast({ type: 'event', event: 'item-start', index: i, total: fronts.length, sku });
         log(`── ${label} · ${sku} ₹${path.meesho.sellingPrice} ──`);
 
+        throwIfStopped();
         const result = await createListing(page, {
           path,
           variant,
@@ -119,6 +128,15 @@ router.post('/run', async (req, res) => {
         }
         broadcast({ type: 'event', event: 'item-done', index: i, ok: result.ok, sku });
       } catch (err) {
+        // A stop is a decision, not a failure.
+        if (err instanceof RunStopped) {
+          broadcast({ type: 'event', event: 'item-done', index: i, ok: false, sku });
+          broadcast({
+            type: 'info',
+            text: `Stopped during ${label}. A part-built catalogue may be left on screen.`,
+          });
+          break;
+        }
         // One bad listing does not end the batch — the rest of the images are still
         // worth listing, and the SKU it burned is already recorded either way.
         broadcast({ type: 'error', text: `${label} failed: ${err.message}` });
