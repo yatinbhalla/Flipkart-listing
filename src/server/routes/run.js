@@ -22,6 +22,7 @@ import * as L from '../../browser/listing.js';
 import { MAX_BATCH, variantNeedsImage } from '../constants.js';
 import { describeListing, listingSkus } from '../format.js';
 import { PARTNERS, verticalFor } from '../partners.js';
+import { runMeeshoBatch, meeshoBlocker } from './meesho.js';
 
 export { variantNeedsImage };
 
@@ -174,6 +175,9 @@ router.post('/', async (req, res) => {
     // behind one Seller Hub: listing on one does not list on the other, so the same
     // path is run once per storefront.
     partner = 'flipkart',
+    // One upload, listed on several storefronts in turn. The same images and the
+    // same repeat count go to each; every listing still gets its own SKU.
+    partners,
     // How many times to repeat the whole selection. Flipkart, unlike Meesho, accepts
     // any number of listings carrying the same photo, so 5 images with repeat 4 means
     // 20 listings — each still gets its own freshly allocated SKU.
@@ -185,8 +189,18 @@ router.post('/', async (req, res) => {
   } = req.body;
   const path = await getPath(pathId);
   if (!path) return res.status(404).json({ error: 'Path not found.' });
-  if (!PARTNERS.includes(String(partner).toLowerCase())) {
-    return res.status(400).json({ error: `Unknown partner "${partner}".` });
+  const storefronts = (Array.isArray(partners) && partners.length ? partners : [partner]).map((p) =>
+    String(p).toLowerCase(),
+  );
+  const known = [...PARTNERS, 'meesho'];
+  const unknown = storefronts.find((p) => !known.includes(p));
+  if (unknown) return res.status(400).json({ error: `Unknown storefront "${unknown}".` });
+
+  // Meesho is checked BEFORE anything is listed anywhere. Finding out at the
+  // handover means a Flipkart batch has already gone out and the run then fails.
+  if (storefronts.includes('meesho')) {
+    const blocker = meeshoBlocker(path);
+    if (blocker) return res.status(400).json({ error: blocker });
   }
 
   const selected = Array.isArray(frontImages) ? frontImages : [frontImages];
@@ -309,6 +323,8 @@ router.post('/', async (req, res) => {
   const fail = (text) => broadcast({ type: 'error', text });
   const done = [];
   const failed = [];
+  // Everything listed across every storefront, for the finishing event.
+  const allDone = [];
 
   try {
     const shared = await resolveShared(pathId, sharedOverrides);
@@ -328,11 +344,24 @@ router.post('/', async (req, res) => {
       log(`Using a one-off image for ${slot}: ${String(file).split(/[\\/]/).pop()}`);
     }
 
-    const { page } = await getSession(log);
     if (cycles > 1) {
       log(`Repeating ${selected.length} image(s) × ${cycles} = ${fronts.length} listings.`);
     }
-    broadcast({ type: 'event', event: 'batch-start', total: fronts.length });
+
+    for (const storefront of storefronts) {
+      // Each storefront gets the whole batch before the next one starts.
+      if (storefronts.length > 1) log(`━━ ${storefront.toUpperCase()} ━━`);
+
+      if (storefront === 'meesho') {
+        const listed = await runMeeshoBatch({ path, pathId, fronts, submit: sendToQc, log });
+        allDone.push(...listed);
+        continue;
+      }
+
+      done.length = 0;
+      failed.length = 0;
+      const { page } = await getSession(log);
+      broadcast({ type: 'event', event: 'batch-start', total: fronts.length });
 
     for (let i = 0; i < fronts.length; i++) {
       const front = fronts[i];
@@ -359,10 +388,10 @@ router.post('/', async (req, res) => {
         // vertical by its whole branch rather than a leaf name is what stops two
         // same-named leaves in different branches being confused for each other.
         const wantedVertical =
-          String(partner).toLowerCase() === 'shopsy'
-            ? path.shopsyVerticalPath || verticalFor(path.vertical, partner)
+          storefront === 'shopsy'
+            ? path.shopsyVerticalPath || verticalFor(path.vertical, storefront)
             : path.verticalPath || path.vertical;
-        await L.selectVertical(page, wantedVertical, log, { partner });
+        await L.selectVertical(page, wantedVertical, log, { partner: storefront });
         throwIfStopped();
         await L.selectBrand(page, path.brand, log);
         throwIfStopped();
@@ -371,7 +400,7 @@ router.post('/', async (req, res) => {
         await L.uploadImages(page, [front, ...shared], log);
         throwIfStopped();
 
-        await L.fillTabs(page, path, parent, log, { partner });
+        await L.fillTabs(page, path, parent, log, { partner: storefront });
         throwIfStopped();
         // Slots 2–5 per variant: the path's reused set, with any per-variant file
         // (typically the slot-4 pack-size shot) swapped in.
@@ -436,20 +465,23 @@ router.post('/', async (req, res) => {
       }
     }
 
-    const summary = `${done.length} listed${failed.length ? `, ${failed.length} failed` : ''}`;
-    broadcast({
-      type: failed.length ? 'error' : 'success',
-      text: sendToQc
-        ? `Batch finished — ${summary}. Sent to QC: ${done.map((d) => d.text).join(', ') || 'none'}`
-        : `Batch finished — ${summary}. Drafts left for review: ${
-            done.map((d) => d.text).join(', ') || 'none'
-          }`,
-    });
+      const where = storefronts.length > 1 ? `${storefront}: ` : '';
+      const summary = `${done.length} listed${failed.length ? `, ${failed.length} failed` : ''}`;
+      broadcast({
+        type: failed.length ? 'error' : 'success',
+        text: sendToQc
+          ? `${where}Batch finished — ${summary}. Sent to QC: ${done.map((d) => d.text).join(', ') || 'none'}`
+          : `${where}Batch finished — ${summary}. Drafts left for review: ${
+              done.map((d) => d.text).join(', ') || 'none'
+            }`,
+      });
+      allDone.push(...done.map((d) => d.text));
+    }
   } catch (err) {
     fail(err.message);
   } finally {
     clearActiveRun();
-    broadcast({ type: 'event', event: 'run-finished', done, failed });
+    broadcast({ type: 'event', event: 'run-finished', done: allDone, failed });
   }
 });
 

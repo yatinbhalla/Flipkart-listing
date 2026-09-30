@@ -62,43 +62,32 @@ async function reusedImages(pathId) {
 // ─── POST /api/meesho/run ─────────────────────────────────────────────────────
 // Batches exactly like the Flipkart run: every front image becomes its own
 // catalogue with its own SKU, and the whole selection can be repeated.
-router.post('/run', async (req, res) => {
-  const { pathId, frontImages = [], repeat = 1, submit = false } = req.body || {};
-  if (getActiveRun()) return res.status(409).json({ error: 'A run is already in progress.' });
+/**
+ * Why a path cannot be listed on Meesho, or null when it can.
+ *
+ * Shared with the combined run, which needs to say so before starting a Flipkart
+ * batch rather than after — finding out at the handover is finding out too late.
+ */
+export function meeshoBlocker(path) {
+  if (!path.meesho) return `"${path.name}" is not configured for Meesho.`;
+  if (isSetPath(path)) return 'Set paths are not listed on Meesho.';
+  return null;
+}
 
-  const path = await getPath(pathId);
-  if (!path) return res.status(404).json({ error: 'Path not found.' });
-  if (!path.meesho) {
-    return res.status(400).json({ error: `"${path.name}" is not configured for Meesho.` });
-  }
-  if (isSetPath(path)) {
-    return res.status(400).json({ error: 'Set paths are not listed on Meesho.' });
-  }
-
-  const selected = Array.isArray(frontImages) ? frontImages : [frontImages];
-  if (!selected.length) return res.status(400).json({ error: 'Select at least one front image.' });
-
-  const cycles = Math.min(Math.max(Number(repeat) || 1, 1), 99);
-  const fronts = Array.from({ length: cycles }, () => selected).flat();
-  if (fronts.length > MAX_BATCH) {
-    return res.status(400).json({
-      error: `That is ${fronts.length} listings; the limit is ${MAX_BATCH} per run.`,
-    });
-  }
-
-  res.json({ started: true });
-  setActiveRun({ marketplace: 'meesho', pathId });
-  const log = (text) => broadcast({ type: 'info', text });
+/**
+ * List one path's images on Meesho.
+ *
+ * Deliberately owns neither the active-run flag nor run-finished: a combined run
+ * hands this one storefront of several, and each announcing the run over is how a
+ * progress bar ends up jumping back to the start halfway through.
+ */
+export async function runMeeshoBatch({ path, pathId, fronts, submit, log }) {
   const done = [];
+  const extras = await reusedImages(pathId);
+  const { page } = await getMeeshoSession(log);
+  broadcast({ type: 'event', event: 'batch-start', total: fronts.length });
 
-  try {
-    const extras = await reusedImages(pathId);
-    const { page } = await getMeeshoSession(log);
-    if (cycles > 1) {
-      log(`Repeating ${selected.length} image(s) × ${cycles} = ${fronts.length} listings.`);
-    }
-    broadcast({ type: 'event', event: 'batch-start', total: fronts.length });
-
+  {
     for (let i = 0; i < fronts.length; i++) {
       const label = `listing ${i + 1}/${fronts.length}`;
       let sku = null;
@@ -150,6 +139,39 @@ router.post('/run', async (req, res) => {
         ? `Meesho: ${done.length}/${fronts.length} ${submit ? 'submitted' : 'filled'} — ${done.join(', ')}`
         : 'Meesho: nothing was listed.',
     });
+  }
+  return done;
+}
+
+// ─── POST /api/meesho/run — Meesho on its own ─────────────────────────────────
+router.post('/run', async (req, res) => {
+  const { pathId, frontImages = [], repeat = 1, submit = false } = req.body || {};
+  if (getActiveRun()) return res.status(409).json({ error: 'A run is already in progress.' });
+
+  const path = await getPath(pathId);
+  if (!path) return res.status(404).json({ error: 'Path not found.' });
+  const blocker = meeshoBlocker(path);
+  if (blocker) return res.status(400).json({ error: blocker });
+
+  const selected = Array.isArray(frontImages) ? frontImages : [frontImages];
+  if (!selected.length) return res.status(400).json({ error: 'Select at least one front image.' });
+
+  const cycles = Math.min(Math.max(Number(repeat) || 1, 1), 99);
+  const fronts = Array.from({ length: cycles }, () => selected).flat();
+  if (fronts.length > MAX_BATCH) {
+    return res.status(400).json({
+      error: `That is ${fronts.length} listings; the limit is ${MAX_BATCH} per run.`,
+    });
+  }
+
+  res.json({ started: true });
+  setActiveRun({ marketplace: 'meesho', pathId });
+  const log = (text) => broadcast({ type: 'info', text });
+  try {
+    if (cycles > 1) {
+      log(`Repeating ${selected.length} image(s) × ${cycles} = ${fronts.length} listings.`);
+    }
+    await runMeeshoBatch({ path, pathId, fronts, submit, log });
   } catch (err) {
     broadcast({ type: 'error', text: err.message });
   } finally {

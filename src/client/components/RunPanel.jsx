@@ -24,7 +24,9 @@ export default function RunPanel({ path, running, progress, onStarted }) {
   const [repeat, setRepeat] = useState(2);
   // Which storefront this run lists on. Flipkart and Shopsy are separate
   // catalogues, so the same path is run once for each.
-  const [partner, setPartner] = useState('flipkart');
+  // An ordered list, not one choice: a set of images is usually listed on more than
+  // one storefront, and the order is the order they were picked in.
+  const [partner, setPartner] = useState(['flipkart']);
   const [stopping, setStopping] = useState(false);
 
   // Clear it when the run ends, or the next run opens with the Stop button already
@@ -135,9 +137,10 @@ export default function RunPanel({ path, running, progress, onStarted }) {
     setBusy(true);
     setError('');
     try {
-      // Meesho is a different marketplace, not a Flipkart storefront toggle: one
-      // product per catalogue, its own form, its own endpoint.
-      if (partner === 'meesho') {
+      // Meesho on its own goes to its own endpoint; combined with anything else the
+      // main run orchestrates the order, so there is one run, one Stop button and
+      // one progress bar rather than the client stitching two runs together.
+      if (partner.length === 1 && partner[0] === 'meesho') {
         const res = await fetch('/api/meesho/run', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -165,7 +168,7 @@ export default function RunPanel({ path, running, progress, onStarted }) {
             Object.entries(variantImages).map(([k, imgs]) => [k, (imgs || []).map((i) => i.path)]),
           ),
           sendToQc,
-          partner,
+          partners: partner,
         }),
       });
       const data = await res.json();
@@ -393,31 +396,46 @@ export default function RunPanel({ path, running, progress, onStarted }) {
       <div className="rounded-xl border border-slate-200 bg-white p-4">
         <h3 className="text-sm font-semibold">Storefront</h3>
         <p className="mt-1 text-xs text-slate-500">
-          Each storefront is a separate catalogue — listing on one does not list on the
-          others. Run the path once for each.
+          Each storefront is a separate catalogue. Pick more than one and the same images
+          are listed on each in turn, in the order picked — every listing still gets its
+          own SKU.
         </p>
         <div className="mt-2 flex gap-2">
           {[
             ['flipkart', 'Flipkart'],
             ['shopsy', 'Shopsy'],
             ['meesho', 'Meesho'],
-          ].map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setPartner(id)}
-              disabled={running || busy}
-              className={`rounded-lg border px-3 py-1.5 text-sm ${
-                partner === id
-                  ? 'border-fk-blue bg-fk-blue/10 font-semibold text-fk-ink'
-                  : 'border-slate-300 text-slate-600'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
+          ].map(([id, label]) => {
+            const at = partner.indexOf(id);
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() =>
+                  setPartner((chosen) =>
+                    chosen.includes(id)
+                      // Never leave none selected — the last one stays put.
+                      ? chosen.length > 1
+                        ? chosen.filter((p) => p !== id)
+                        : chosen
+                      : [...chosen, id],
+                  )
+                }
+                disabled={running || busy}
+                className={`rounded-lg border px-3 py-1.5 text-sm ${
+                  at >= 0
+                    ? 'border-fk-blue bg-fk-blue/10 font-semibold text-fk-ink'
+                    : 'border-slate-300 text-slate-600'
+                }`}
+              >
+                {/* The number is the order they will be listed in. */}
+                {partner.length > 1 && at >= 0 ? `${at + 1}. ` : ''}
+                {label}
+              </button>
+            );
+          })}
         </div>
-        {partner === 'meesho' && (
+        {partner.includes('meesho') && (
           <p className="mt-2 text-xs text-slate-500">
             Every front image becomes its own Meesho catalogue with its own SKU, the same as
             a Flipkart run. Meesho takes four images per product, so each listing is the front
@@ -425,13 +443,13 @@ export default function RunPanel({ path, running, progress, onStarted }) {
             path lists only its first variant, and set paths are not listed there.
           </p>
         )}
-        {partner === 'meesho' && !path.meesho && (
+        {partner.includes('meesho') && !path.meesho && (
           <p className="mt-2 text-xs text-amber-700">
             This path has no Meesho configuration — category, GST, HSN and price are all
             needed before it can be listed there.
           </p>
         )}
-        {partner === 'shopsy' && !path.fields && (
+        {partner.includes('shopsy') && !path.fields && (
           <p className="mt-2 text-xs text-amber-700">
             This path has no field map, so it can only be listed on Flipkart. Shopsy uses
             different labels (Items Included is “Sales Package”, Color becomes “Color For
@@ -493,7 +511,7 @@ export default function RunPanel({ path, running, progress, onStarted }) {
             ? 'Run in progress…'
             : `${sendToQc ? 'List and send to QC' : 'Create draft'}${
                 totalListings > 1 ? ` — ${totalListings} listings` : ''
-              }`}
+              }${partner.length > 1 ? ` on ${partner.length} storefronts` : ''}`}
         </button>
 
         {/* Only while something is running. Closing the browser used to be the only
