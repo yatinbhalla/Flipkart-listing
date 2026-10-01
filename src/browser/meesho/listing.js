@@ -9,6 +9,8 @@
  * content/MEESHO_REQUIREMENTS.md for the longer version.
  */
 
+import fs from 'fs/promises';
+
 const SELECT_CATEGORY_URL =
   'https://supplier.meesho.com/panel/v3/new/cataloging/vaqbo/catalogs/single/select-category';
 
@@ -382,6 +384,82 @@ export async function createListing(page, { path: cfg, variant, sku, images, sub
   return finishSubmission(page, log);
 }
 
+/** Whether any button the declaration gates is live — the fallback proof of a tick. */
+async function proceedEnabled(page) {
+  for (const name of ['Proceed', 'Confirm', 'Submit', 'Yes']) {
+    const button = page.locator(`role=button[name="${name}"]`).first();
+    if (!(await button.isVisible().catch(() => false))) continue;
+    if (!(await button.isDisabled().catch(() => true))) return true;
+  }
+  return false;
+}
+
+/**
+ * Tick the submission declaration. Returns what happened, not just "I clicked".
+ *
+ * 'absent' nothing to tick · 'already' it was ticked · 'ticked' this call did it ·
+ * 'failed' a click landed and changed nothing readable.
+ *
+ * Meesho draws the box rather than rendering a checkbox that reads back, so the
+ * state often cannot be read at all. When it cannot, the substitute is the only
+ * other honest signal: whether the button the declaration gates came alive.
+ */
+async function tickDeclaration(page, log) {
+  const sentence = page
+    .locator('text=/I understand that all products|I hereby|I confirm|I agree/i')
+    .first();
+  if (!(await sentence.isVisible().catch(() => false))) return 'absent';
+
+  // The box belonging to THIS sentence — the nearest ancestor that holds one —
+  // rather than the first checkbox anywhere on the page.
+  const scope = sentence
+    .locator('xpath=ancestor::*[.//input[@type="checkbox"] or .//*[@role="checkbox"]][1]')
+    .first();
+  const box = scope.locator('input[type="checkbox"], [role="checkbox"]').first();
+  const present = await box
+    .count()
+    .then((n) => n > 0)
+    .catch(() => false);
+
+  const state = async () => {
+    if (!present) return null;
+    const native = await box.isChecked().catch(() => null);
+    if (native !== null) return native;
+    const aria = await box.getAttribute('aria-checked').catch(() => null);
+    if (aria !== null) return aria === 'true';
+    const cls = (await box.getAttribute('class').catch(() => '')) || '';
+    return /checked/i.test(cls) ? true : null;
+  };
+
+  if ((await state()) === true) return 'already';
+
+  const wasEnabled = await proceedEnabled(page);
+  let acted = false;
+  if (present) {
+    acted =
+      (await box.click({ timeout: 5000 }).then(() => true).catch(() => false)) ||
+      (await box.click({ force: true, timeout: 5000 }).then(() => true).catch(() => false));
+  }
+  if (!acted) {
+    // Last resort: the drawn box sits immediately left of the words.
+    const r = await sentence.boundingBox().catch(() => null);
+    if (!r) return 'failed';
+    await page.mouse.click(r.x - 18, r.y + r.height / 2);
+    acted = true;
+  }
+  await page.waitForTimeout(800);
+
+  if ((await state()) === true) {
+    log('  ticked the declaration');
+    return 'ticked';
+  }
+  if (!wasEnabled && (await proceedEnabled(page))) {
+    log('  ticked the declaration (the button it gates came alive)');
+    return 'ticked';
+  }
+  return 'failed';
+}
+
 /**
  * See the submission through, whatever Meesho puts in the way.
  *
@@ -398,6 +476,10 @@ export async function createListing(page, { path: cfg, variant, sku, images, sub
 export async function finishSubmission(page, log, { timeout = 120000 } = {}) {
   const deadline = Date.now() + timeout;
   const clicked = [];
+  // Attempts at the two things that can fail silently. Both used to retry forever,
+  // which is how a stuck modal ate the whole deadline instead of reporting itself.
+  let gateFailures = 0;
+  let declarationTries = 0;
   const off = () => !/\/single\/add/.test(page.url());
 
   while (Date.now() < deadline) {
@@ -406,24 +488,41 @@ export async function finishSubmission(page, log, { timeout = 120000 } = {}) {
       return { ok: true, submitted: true, problems: [] };
     }
 
-    // The word gate first when present: Update Changes stays dead until it is clear.
-    if (await clearBrandGate(page, log)) {
-      clicked.push('brand gate');
-      continue;
-    }
-
-    // A declaration that is present but unticked. Ticking it is what enables the
-    // button that follows, so it is always worth doing before clicking anything.
-    const declaration = page.locator('text=I understand that all products').first();
-    if (await declaration.isVisible().catch(() => false)) {
-      const box = await declaration.boundingBox().catch(() => null);
-      if (box) {
-        await page.mouse.click(box.x - 18, box.y + box.height / 2);
-        await page.waitForTimeout(800);
+    // The declaration before the gate, not after. It sits in the same panel as the
+    // flagged-words modal and gates the buttons under it, so it is worth accepting
+    // whether or not the gate is up — and ordering it after the gate meant a gate
+    // that would not clear stopped the run with the box never once attempted.
+    if (declarationTries < 3) {
+      const tick = await tickDeclaration(page, log);
+      if (tick === 'ticked') {
         clicked.push('declaration');
         continue;
       }
+      // A click that changed nothing we can read. Counted, so a box this code cannot
+      // work is not clicked on and off for the rest of the deadline.
+      if (tick === 'failed') declarationTries += 1;
     }
+
+    const gate = await clearBrandGate(page, log);
+    if (gate.changed) {
+      clicked.push('brand gate');
+      continue;
+    }
+    // A gate still standing after two honest attempts is not going to yield to a
+    // third. Say so while the modal is still on screen to be looked at.
+    if (gate.seen && ++gateFailures >= 2) {
+      const shot = await captureState(page, 'brand-gate-stuck');
+      log(`  the flagged-words modal could not be cleared — captured in ${shot}`);
+      return {
+        ok: false,
+        submitted: false,
+        problems: [
+          'Meesho flagged words in the copy and the modal could not be cleared automatically. ' +
+            `Clear it in the browser, or edit the path copy. Modal captured in ${shot}.`,
+        ],
+      };
+    }
+    if (gate.seen) continue;
 
     // Then whichever confirmation this catalogue happens to show.
     let acted = false;
@@ -465,9 +564,45 @@ export async function finishSubmission(page, log, { timeout = 120000 } = {}) {
  * is fuzzy rather than a fixed list — "everyday" appears in most of the catalogue
  * and passes, while "navy" was caught — so this handles whatever it names.
  */
+/**
+ * Screenshot plus the markup of whatever is floating above the form.
+ *
+ * A modal this code cannot drive is a modal nobody has read. Guessing at selectors
+ * costs a run per guess, so the first time one is not understood it gets written
+ * down instead.
+ */
+async function captureState(page, tag) {
+  const stamp = `${Date.now()}_${tag}`;
+  await fs.mkdir('data/runs', { recursive: true }).catch(() => {});
+  await page.screenshot({ path: `data/runs/${stamp}.png` }).catch(() => {});
+  const html = await page
+    .evaluate(() => {
+      // MUI's dialog is a sibling of its backdrop, not a child, and the paper itself
+      // is positioned `relative` inside a fixed root — so filtering on "positioned
+      // and large" caught the backdrop (an empty div) and nothing else. Ask for the
+      // dialog by name, and fall back to the whole body rather than to guesswork.
+      const dialogs = [...document.querySelectorAll('[role="dialog"], .MuiDialog-paper, .MuiModal-root')]
+        .filter((el) => el.innerText && el.innerText.trim().length > 20)
+        .map((el) => el.outerHTML);
+      return dialogs.length ? dialogs.join('\n\n<!-- ── -->\n\n') : document.body.innerHTML;
+    })
+    .catch(() => '');
+  if (html) await fs.writeFile(`data/runs/${stamp}.html`, html.slice(0, 400000), 'utf8').catch(() => {});
+  return `data/runs/${stamp}.png`;
+}
+
+/**
+ * Clear the flagged-words modal, reporting whether this pass actually changed
+ * anything.
+ *
+ * Returning a bare `true` whenever the modal was on screen is what let an
+ * uncleanable gate spin: the caller read "handled" and looped straight back into a
+ * modal nothing had been done to, seventeen seconds at a time until the deadline.
+ * `changed` is what the caller needs — "the gate is still there" is not progress.
+ */
 export async function clearBrandGate(page, log) {
   const gate = page.locator('text=/unauthorized brands|illegal keywords/i').first();
-  if (!(await gate.isVisible().catch(() => false))) return false;
+  if (!(await gate.isVisible().catch(() => false))) return { seen: false, changed: false };
 
   const words = await page.evaluate(() =>
     [...document.querySelectorAll('mark, [class*=highlight i], [class*=Highlight]')]
@@ -475,22 +610,31 @@ export async function clearBrandGate(page, log) {
       .filter(Boolean),
   );
   log(`  brand gate flagged: ${[...new Set(words)].join(', ') || '(unnamed)'}`);
+  // No words found means the selectors above missed, and clicking blind is how this
+  // spun in the first place. Write the modal down so the next pass can be aimed.
+  if (!words.length) log(`  gate markup captured in ${await captureState(page, 'brand-gate')}`);
 
+  let removed = 0;
   for (let i = 0; i < 10; i++) {
     const x = page
       .locator('svg[class*=close i], [data-testid*=Close], [class*=chip i] svg, mark svg')
       .first();
     if (!(await x.isVisible().catch(() => false))) break;
-    await x.click({ timeout: 8000 }).catch(() => {});
+    if (await x.click({ timeout: 8000 }).then(() => true).catch(() => false)) removed++;
     await page.waitForTimeout(400);
   }
+
   const update = page.locator('role=button[name="Update Changes"]').first();
-  if (await update.isVisible().catch(() => false)) {
+  const canUpdate =
+    (await update.isVisible().catch(() => false)) && !(await update.isDisabled().catch(() => true));
+  if (removed && canUpdate) {
     await update.click({ timeout: 15000 }).catch(() => {});
     await page.waitForTimeout(2500);
-    log('  cleared the brand gate');
+    log(`  cleared the brand gate (${removed} word${removed === 1 ? '' : 's'})`);
   }
-  return true;
+  // Pressing Update Changes having struck nothing out just re-submits the same text
+  // and the same modal comes back, so that is not a change.
+  return { seen: true, changed: removed > 0 };
 }
 
 /** The submit banner counts errors; the fields themselves name them. */
