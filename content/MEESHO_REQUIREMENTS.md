@@ -73,7 +73,7 @@ values in a `meesho` block in its own config (kept local with the rest of
 | `included_components` | — | — | cotton |
 | `multipack` | 1 | — | 1 / 2 / 4 (the pack size) |
 | `product_unit` / `weight_unit` | Inch / g | — | Inch / g |
-| `hsn_code` | 392410 PVC / 630492 net | 611190 | 630492 |
+| `hsn_code` | 392410 PVC / 630492 net | 911120 | 630492 |
 | `color` | as the path already states | White | remapped, see below |
 
 Two vocabulary gaps the seller settled:
