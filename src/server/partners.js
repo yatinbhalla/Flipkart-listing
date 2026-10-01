@@ -20,6 +20,9 @@ const SHOPSY_VERTICAL = {
   'Table Cover': 'Shopsy Table Cover',
   'Blanket': 'Shopsy Blanket',
   'Hanging Organizers': 'Shopsy Hanging Organizer',
+  // Not prefixed. Verified by discovering the vertical on the Shopsy catalogue under
+  // this exact name on 2026-10-01 — "Shopsy Bath Linen Set" does not exist.
+  'Bath Linen Set': 'Bath Linen Set',
 };
 
 /** What the vertical is called on `partner`. */
@@ -83,6 +86,17 @@ const SHOPSY_FIELDS = {
       'Mounting Type': 'Additional Description',
       Foldable: 'Additional Description',
     },
+  },
+  // Discovered on both storefronts 2026-10-01. The two forms are identical field for
+  // field except the Sales Package rename and Procurement type, which drops "domestic
+  // procurement" on Shopsy — a value no path uses. Nothing moves tab, nothing is
+  // dropped, and every option list matches value for value.
+  'Bath Linen Set': {
+    rename: { 'Items Included': 'Sales Package' },
+    drop: [],
+    retype: {},
+    substitute: {},
+    move: {},
   },
 };
 

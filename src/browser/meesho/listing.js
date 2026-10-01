@@ -209,7 +209,21 @@ export async function createListing(page, { path: cfg, variant, sku, images, sub
 
   log(`== category: ${M.category}`);
   await page.goto(SELECT_CATEGORY_URL, { waitUntil: 'domcontentloaded' });
-  await appears(page, 'input[placeholder*="Sarees" i]', 40000);
+  // The .../catalogs/single/add URL no longer opens the category picker on its own —
+  // as of 2026-10-01 it redirects to the catalog LIST, where the picker is behind an
+  // "Add Single Catalog" button. Waiting on the search box alone therefore timed out
+  // on a page that was loaded and fine. Short wait first, because when the URL does
+  // open the picker directly there is no button to click.
+  if (!(await appears(page, 'input[placeholder*="Sarees" i]', 12000))) {
+    const addSingle = page.locator('button:has-text("Add Single Catalog")').first();
+    if (await addSingle.isVisible().catch(() => false)) {
+      log('  (the URL landed on the catalog list — opening Add Single Catalog)');
+      await addSingle.click();
+    }
+  }
+  if (!(await appears(page, 'input[placeholder*="Sarees" i]', 40000))) {
+    throw new Error('The category search box never rendered — check the Chromium window.');
+  }
   phase('load category page');
   // Search on the leaf name: the typeahead misses on a fragment ("wall decor" finds
   // nothing where "wall decor & hangings" finds the category).
@@ -315,6 +329,9 @@ export async function createListing(page, { path: cfg, variant, sku, images, sub
   await f.pick('#fabric', M.fabric, 'fabric');
   await f.pick('#ideal_for', M.idealFor, 'ideal for');
   if (M.printOrPatternType) await f.pick('#print_or_pattern_type', M.printOrPatternType, 'print or pattern type');
+  // Bath linen only: Towel / Towel Set / Gamcha / Gamcha Set. Optional on the form,
+  // so it is guarded like the rest of the category-specific attributes.
+  if (M.set) await f.pick('#set', M.set, 'set');
   if (M.secondaryColor) await f.pick('#secondary_color', M.secondaryColor, 'secondary colour');
   if (M.includedComponents) await f.type('#included_components', M.includedComponents, 'included components');
   await f.byCandidates(ID_CANDIDATES.length, variant.sizeInches.length, 'product length');

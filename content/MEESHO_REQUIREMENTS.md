@@ -19,6 +19,7 @@ Field schemas: `content/MEESHO_*_SCHEMA.json`.
 | Table Cover | Home & Kitchen > Home Furnishings > Kitchen Linens > Table Cloths |
 | Blanket | Home & Living > Baby Care > Baby Blanket > Baby Blanket |
 | Hanging Organizers | Home & Kitchen > Home Decor > Decorative Accessories > Wall Decor & Hangings |
+| Bath Linen Set | Home & Kitchen > Home Furnishings > Bathroom Linen > Hand & Face Towels |
 
 ## Field values
 
@@ -110,6 +111,49 @@ Scenery — none of which is a three-pocket storage organiser. The seller chose 
 stay in the category and list them as **Scenery**. The alternative categories
 (Home Utility > Home Storage & Organization > Organisers, and Home & Living > Home
 Utility > Organisers) were not explored.
+
+## Bathroom Linen (added 2026-10-01)
+
+Discovered live for the hand towel path. 31 fields before a size is chosen, 37 after —
+the same "size gates the price row" behaviour as every other category.
+
+**It is not shaped like the other three.** There is no `#pattern`, no `#fabric`, no
+`#size`, and no `#weight` / `#weight_unit` at all. `createListing` skips a selector
+that is not on the page, so none of those cost anything — but a value for them in a
+path's `meesho` block would be silently inert.
+
+| Meesho field | Value for the hand towels | Notes |
+|---|---|---|
+| `generic_name` | Hand & Face Towels | mandatory |
+| `type` | Hand Towel | mandatory; offers only Hand Towel / Face Towel |
+| `ideal_for` | Unisex | mandatory; Baby / Men / Unisex / Women |
+| `material` | Cotton | mandatory |
+| `multipack` | 4 | mandatory |
+| `color` | Multicolor | mandatory |
+| `country_of_origin` | India | mandatory |
+| `print_or_pattern_type` | Floral | optional; the list has no "Printed" |
+| `set` | Towel Set | optional; Towel / Towel Set / Gamcha / Gamcha Set |
+| `supplier_gst_percent` | 5 | the list offers only 5 and 18 |
+| `hsn_code` | 630260 | see below |
+
+**The HSN list is three codes long: 630492, 630260, 520811.** A code that is not on it
+cannot be entered at all — this is a short category-scoped dropdown, not the searchable
+kind. The hand towel path was given 611120 by the seller, which Flipkart accepts as free
+text and Meesho will not offer, so the two marketplaces carry different codes until that
+is settled.
+
+`product_length` / `product_breadth` / `product_height` are searchable dropdowns in 0.5
+steps, and `product_unit` offers Ft / Inch / M / cm / mm. `createListing` hardcodes Inch,
+so the towels go in as 20.5 x 13.5 Inch rather than 52 x 34 cm.
+
+## Getting to the form at all (changed 2026-10-01)
+
+`https://supplier.meesho.com/panel/v3/new/cataloging/vaqbo/catalogs/single/add` no longer
+opens the category picker. It redirects to the catalog **list**, where the picker is
+behind an **Add Single Catalog** button. The old code waited 40s for the search box on a
+page that was loaded and fine, then failed with a message about the browser being signed
+out — which it was not. `createListing` now waits 12s, clicks the button if the box has
+not appeared, and only then waits the full time.
 
 ## The submission flow, and what the form does to you
 

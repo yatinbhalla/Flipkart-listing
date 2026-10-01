@@ -1,0 +1,587 @@
+{
+  "marketplace": "Meesho",
+  "category": "Home & Kitchen > Home Furnishings > Bathroom Linen > Hand & Face Towels",
+  "discoveredAt": "2026-10-01",
+  "entry": "Catalog Uploads > Add Single Catalog",
+  "url": "https://supplier.meesho.com/panel/v3/new/cataloging/vaqbo/catalogs/single/add",
+  "sizeRowCreated": true,
+  "fieldCountBeforeSize": 31,
+  "fieldCount": 37,
+  "requiredLabels": [
+    "Select",
+    "Select",
+    "Enter Net Weight (gms)",
+    "Enter Product Name",
+    "Select",
+    "Select",
+    "Select",
+    "Select",
+    "Select",
+    "Select",
+    "Select",
+    "Select",
+    "Select",
+    "Select",
+    "Select",
+    "Select",
+    "Enter Manufacturer Name",
+    "Enter Manufacturer Address",
+    "Enter Manufacturer Pincode",
+    "Enter Packer Name",
+    "Enter Packer Address",
+    "Enter Packer Pincode",
+    "Enter Importer Name",
+    "Enter Importer Address",
+    "Enter Importer Pincode"
+  ],
+  "fields": [
+    {
+      "id": "supplier_gst_percent",
+      "name": "supplier_gst_percent",
+      "label": "Select",
+      "required": true,
+      "readonly": true,
+      "tag": "input",
+      "type": "text"
+    },
+    {
+      "id": "hsn_code",
+      "name": "hsn_code",
+      "label": "Select",
+      "required": true,
+      "readonly": true,
+      "tag": "input",
+      "type": "text"
+    },
+    {
+      "id": "product_weight_in_gms",
+      "name": "product_weight_in_gms",
+      "label": "Enter Net Weight (gms)",
+      "required": true,
+      "readonly": false,
+      "tag": "input",
+      "type": "number"
+    },
+    {
+      "id": "supplier_product_id",
+      "name": "supplier_product_id",
+      "label": "Enter Style code/ Product ID (optional)",
+      "required": false,
+      "readonly": false,
+      "tag": "input",
+      "type": "text"
+    },
+    {
+      "id": "product_name",
+      "name": "product_name",
+      "label": "Enter Product Name",
+      "required": true,
+      "readonly": false,
+      "tag": "input",
+      "type": "text"
+    },
+    {
+      "id": "mui-13",
+      "name": null,
+      "label": "Select",
+      "required": true,
+      "readonly": true,
+      "tag": "input",
+      "type": "text"
+    },
+    {
+      "id": null,
+      "name": null,
+      "label": "",
+      "required": false,
+      "readonly": false,
+      "tag": "input",
+      "type": "checkbox"
+    },
+    {
+      "id": "meesho_price",
+      "name": null,
+      "label": "",
+      "required": false,
+      "readonly": false,
+      "tag": "input",
+      "type": "number"
+    },
+    {
+      "id": "wdrp_discount",
+      "name": null,
+      "label": "",
+      "required": false,
+      "readonly": false,
+      "tag": "input",
+      "type": "number"
+    },
+    {
+      "id": "product_mrp",
+      "name": null,
+      "label": "",
+      "required": false,
+      "readonly": false,
+      "tag": "input",
+      "type": "number"
+    },
+    {
+      "id": "inventory",
+      "name": null,
+      "label": "",
+      "required": false,
+      "readonly": false,
+      "tag": "input",
+      "type": "number"
+    },
+    {
+      "id": "supplier_sku_id",
+      "name": null,
+      "label": "",
+      "required": false,
+      "readonly": false,
+      "tag": "input",
+      "type": "text"
+    },
+    {
+      "id": "color",
+      "name": "color",
+      "label": "Select",
+      "required": true,
+      "readonly": true,
+      "tag": "input",
+      "type": "text"
+    },
+    {
+      "id": "generic_name",
+      "name": "generic_name",
+      "label": "Select",
+      "required": true,
+      "readonly": true,
+      "tag": "input",
+      "type": "text"
+    },
+    {
+      "id": "ideal_for",
+      "name": "ideal_for",
+      "label": "Select",
+      "required": true,
+      "readonly": true,
+      "tag": "input",
+      "type": "text"
+    },
+    {
+      "id": "material",
+      "name": "material",
+      "label": "Select",
+      "required": true,
+      "readonly": true,
+      "tag": "input",
+      "type": "text"
+    },
+    {
+      "id": "multipack",
+      "name": "multipack",
+      "label": "Select",
+      "required": true,
+      "readonly": true,
+      "tag": "input",
+      "type": "text"
+    },
+    {
+      "id": "product_breadth",
+      "name": "product_breadth",
+      "label": "Select",
+      "required": true,
+      "readonly": true,
+      "tag": "input",
+      "type": "text"
+    },
+    {
+      "id": "product_height",
+      "name": "product_height",
+      "label": "Select",
+      "required": true,
+      "readonly": true,
+      "tag": "input",
+      "type": "text"
+    },
+    {
+      "id": "product_length",
+      "name": "product_length",
+      "label": "Select",
+      "required": true,
+      "readonly": true,
+      "tag": "input",
+      "type": "text"
+    },
+    {
+      "id": "product_unit",
+      "name": "product_unit",
+      "label": "Select",
+      "required": true,
+      "readonly": true,
+      "tag": "input",
+      "type": "text"
+    },
+    {
+      "id": "type",
+      "name": "type",
+      "label": "Select",
+      "required": true,
+      "readonly": true,
+      "tag": "input",
+      "type": "text"
+    },
+    {
+      "id": "country_of_origin",
+      "name": "country_of_origin",
+      "label": "Select",
+      "required": true,
+      "readonly": true,
+      "tag": "input",
+      "type": "text"
+    },
+    {
+      "id": "manufacturer_name",
+      "name": "manufacturer_name",
+      "label": "Enter Manufacturer Name",
+      "required": true,
+      "readonly": false,
+      "tag": "input",
+      "type": "text"
+    },
+    {
+      "id": "manufacturer_address",
+      "name": "manufacturer_address",
+      "label": "Enter Manufacturer Address",
+      "required": true,
+      "readonly": false,
+      "tag": "input",
+      "type": "text"
+    },
+    {
+      "id": "manufacturer_pincode",
+      "name": "manufacturer_pincode",
+      "label": "Enter Manufacturer Pincode",
+      "required": true,
+      "readonly": false,
+      "tag": "input",
+      "type": "number"
+    },
+    {
+      "id": "packer_name",
+      "name": "packer_name",
+      "label": "Enter Packer Name",
+      "required": true,
+      "readonly": false,
+      "tag": "input",
+      "type": "text"
+    },
+    {
+      "id": "packer_address",
+      "name": "packer_address",
+      "label": "Enter Packer Address",
+      "required": true,
+      "readonly": false,
+      "tag": "input",
+      "type": "text"
+    },
+    {
+      "id": "packer_pincode",
+      "name": "packer_pincode",
+      "label": "Enter Packer Pincode",
+      "required": true,
+      "readonly": false,
+      "tag": "input",
+      "type": "number"
+    },
+    {
+      "id": "importer_name",
+      "name": "importer_name",
+      "label": "Enter Importer Name",
+      "required": true,
+      "readonly": false,
+      "tag": "input",
+      "type": "text"
+    },
+    {
+      "id": "importer_address",
+      "name": "importer_address",
+      "label": "Enter Importer Address",
+      "required": true,
+      "readonly": false,
+      "tag": "input",
+      "type": "text"
+    },
+    {
+      "id": "importer_pincode",
+      "name": "importer_pincode",
+      "label": "Enter Importer Pincode",
+      "required": true,
+      "readonly": false,
+      "tag": "input",
+      "type": "text"
+    },
+    {
+      "id": "brand",
+      "name": "brand",
+      "label": "Select",
+      "required": false,
+      "readonly": true,
+      "tag": "input",
+      "type": "text"
+    },
+    {
+      "id": "print_or_pattern_type",
+      "name": "print_or_pattern_type",
+      "label": "Select",
+      "required": false,
+      "readonly": true,
+      "tag": "input",
+      "type": "text"
+    },
+    {
+      "id": "set",
+      "name": "set",
+      "label": "Select",
+      "required": false,
+      "readonly": true,
+      "tag": "input",
+      "type": "text"
+    },
+    {
+      "id": "comment",
+      "name": "comment",
+      "label": "Enter Description",
+      "required": false,
+      "readonly": false,
+      "tag": "textarea",
+      "type": "textarea"
+    },
+    {
+      "id": null,
+      "name": null,
+      "label": "",
+      "required": false,
+      "readonly": true,
+      "tag": "textarea",
+      "type": "textarea"
+    }
+  ],
+  "options": {
+    "supplier_gst_percent": [
+      "5",
+      "18"
+    ],
+    "hsn_code": [
+      "630492",
+      "630260",
+      "520811"
+    ],
+    "mui-13": [
+      "Free Size",
+      "Clear Filter Apply"
+    ],
+    "color": [
+      "Beige",
+      "Black",
+      "Blue",
+      "Brown",
+      "Coral",
+      "Cream",
+      "Gold",
+      "Green",
+      "Grey",
+      "Grey Melange",
+      "Khaki",
+      "Lavendar",
+      "Maroon",
+      "Metallic",
+      "Multicolor",
+      "Mustard",
+      "Navy Blue",
+      "Nude",
+      "Olive",
+      "Orange",
+      "Peach",
+      "Pink",
+      "Purple",
+      "Red",
+      "Rust",
+      "Silver",
+      "Teal",
+      "White",
+      "Yellow"
+    ],
+    "generic_name": [
+      "Brush",
+      "Cleaners",
+      "Cleaning Cloth",
+      "Cleaning Tool",
+      "Furniture",
+      "Gardening",
+      "Gardening Product",
+      "Hand & Face Towels",
+      "Home Decor",
+      "Laundry",
+      "Others"
+    ],
+    "ideal_for": [
+      "Baby",
+      "Men",
+      "Unisex",
+      "Women"
+    ],
+    "material": [
+      "Bamboo",
+      "Blended",
+      "Cotton",
+      "Fleece",
+      "Foam",
+      "Jacquard",
+      "Microfibre",
+      "PVA",
+      "Poly Blend",
+      "Poly Terry",
+      "Polyester",
+      "Synthetic",
+      "Terry cotton",
+      "Woven"
+    ],
+    "multipack": [
+      "1",
+      "10",
+      "12",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "7",
+      "8",
+      "9"
+    ],
+    "product_breadth": [
+      "0",
+      "0.5",
+      "1",
+      "1.5",
+      "10",
+      "10.5",
+      "100",
+      "11",
+      "11.5",
+      "12",
+      "12.5",
+      "13",
+      "13.5",
+      "14",
+      "14.5"
+    ],
+    "product_height": [
+      "0",
+      "0.5",
+      "1",
+      "1.5",
+      "10",
+      "10.5",
+      "100",
+      "11",
+      "11.5",
+      "12",
+      "12.5",
+      "13",
+      "13.5",
+      "14",
+      "14.5"
+    ],
+    "product_length": [
+      "0",
+      "0.5",
+      "1",
+      "1.5",
+      "10",
+      "10.5",
+      "100",
+      "11",
+      "11.5",
+      "12",
+      "12.5",
+      "13",
+      "13.5",
+      "14",
+      "14.5"
+    ],
+    "product_unit": [
+      "Ft",
+      "Inch",
+      "M",
+      "cm",
+      "mm"
+    ],
+    "type": [
+      "Face Towel",
+      "Hand Towel"
+    ],
+    "country_of_origin": [
+      "India",
+      "Afghanistan",
+      "Albania",
+      "Algeria",
+      "Andorra",
+      "Angola",
+      "Antigua and Barbuda",
+      "Argentina",
+      "Armenia",
+      "Australia",
+      "Austria",
+      "Azerbaijan",
+      "Bahamas",
+      "Bahrain",
+      "Bangladesh"
+    ],
+    "brand": [
+      "1st Step",
+      "AAROVI",
+      "AARVI TEXTILE",
+      "ABHIKRAM",
+      "AHMADUN",
+      "AL ATASH",
+      "ALMURAT",
+      "ALNOOR HANDICRAFTS",
+      "ARADENT",
+      "ARQIVO",
+      "Aj Entire",
+      "Aroma",
+      "Ayus",
+      "Azotica",
+      "BALCOR"
+    ],
+    "print_or_pattern_type": [
+      "3d Printed",
+      "Abstrast",
+      "Animal",
+      "Botanical",
+      "Cartoon",
+      "Checked",
+      "Colorblocked",
+      "Ethnic Motifs",
+      "Floral",
+      "Geometric",
+      "Polka",
+      "Quirky",
+      "Solid",
+      "Striped",
+      "Textured",
+      "Tribal",
+      "Typography"
+    ],
+    "set": [
+      "Gamcha",
+      "Gamcha Set",
+      "Towel",
+      "Towel Set"
+    ]
+  }
+}

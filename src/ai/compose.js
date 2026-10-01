@@ -24,11 +24,16 @@ const AVOID = ['navy', 'royal', 'premium', 'luxury', 'classic', 'essential', 'ev
 /** Acronyms in the seller's data, which Title Case would otherwise mangle to "Pvc". */
 const ACRONYMS = /\b(pvc|gsm|mdf|pu)\b/gi;
 
+/** Units that stay lowercase in Title Case — "34x52 Cm Size" reads like a typo. */
+const UNITS = /\b(Cm|Mm|Gsm|Kg)\b/g;
+const LOWER_UNITS = { Cm: 'cm', Mm: 'mm', Gsm: 'GSM', Kg: 'kg' };
+
 /** Title Case — for titles and feature chips only. */
 const cap = (s) =>
   String(s || '')
     .replace(/\b\w/g, (c) => c.toUpperCase())
-    .replace(ACRONYMS, (m) => m.toUpperCase());
+    .replace(ACRONYMS, (m) => m.toUpperCase())
+    .replace(UNITS, (m) => LOWER_UNITS[m]);
 
 /** Sentence case; capitalising every word of a sentence reads like a headline. */
 const sentence = (s) => {
@@ -62,6 +67,7 @@ function vocabulary(path, v) {
       where: ['bedroom', 'hostel room', 'study corner', 'kitchen wall', 'bathroom door', 'rented flat'],
       detail: v.numberOfPockets ? `${v.numberOfPockets} open pockets` : 'open pockets',
       mount: list(v.mountingType).join(' or ').toLowerCase() || 'hook',
+      check: 'the wall space you have in mind',
     };
   }
   if (vertical === 'Blanket') {
@@ -77,6 +83,28 @@ function vocabulary(path, v) {
       where: ['cot', 'stroller', 'car seat', 'floor mat', 'travel bag'],
       detail: 'layered muslin cotton',
       mount: '',
+      check: 'the cot or stroller you have in mind',
+    };
+  }
+  // Flipkart files hand towels under Bath Linen Set; the plainer names are kept so a
+  // later towel path does not have to be filed under a "set" vertical to get the copy.
+  if (vertical === 'Bath Linen Set' || vertical === 'Hand Towel' || vertical === 'Towel Set') {
+    return {
+      noun: 'hand towel',
+      // No noun here names the fabric: the banks cross material with noun already,
+      // and "cotton hand towel" then composes titles like "Cotton Hand Towel in Cotton".
+      nouns: ['hand towel', 'hand towel set', 'face towel', 'kitchen hand towel'],
+      does: [
+        'dries hands quickly and goes straight back on the rail',
+        'stays soft against skin wash after wash',
+        'folds down small enough to keep a spare in every room',
+        'takes daily use at the basin without turning stiff',
+      ],
+      where: ['wash basin', 'kitchen counter', 'guest bathroom', 'gym bag', 'travel bag'],
+      // Singular: the middles read "the ${detail} keeps it from looking plain".
+      detail: 'printed floral design',
+      mount: '',
+      check: 'the towel ring or rail you have in mind',
     };
   }
   return {
@@ -91,12 +119,17 @@ function vocabulary(path, v) {
     where: ['dining table', 'centre table', 'study desk', 'office table', 'side table'],
     detail: list(v.pattern).join(' and ').toLowerCase() || 'plain finish',
     mount: '',
+    check: 'your own table',
   };
 }
 
 /** Parts every sentence bank draws on. */
 function parts(path, v) {
-  const size = `${v.sizeInches.width}x${v.sizeInches.length} inch`;
+  // `sizeLabel` lets a variant say its size the way buyers type it. Inches are right
+  // for a table cover and wrong for a hand towel — "13.5x20.5 inch hand towel" is a
+  // phrase nobody searches, while the pack itself is sold as 34x52 cm. Opt-in, so
+  // every existing path keeps the inch string it already composes.
+  const size = v.sizeLabel || `${v.sizeInches.width}x${v.sizeInches.length} inch`;
   const colour = list(v.colorText).length ? list(v.colorText)[0] : list(v.colorRefiner)[0] || '';
   const material = list(v.material).join(' ').toLowerCase() || '';
   const pack = Number(v.packOf || 1);
@@ -109,6 +142,7 @@ function parts(path, v) {
     packPhrase: pack > 1 ? `pack of ${pack}` : 'single piece',
     seating: v.seatingCapacity || '',
     care: list(v.careInstructions),
+    packNote: path.packNote || '',
     vocab: vocabulary(path, v),
   };
 }
@@ -173,7 +207,7 @@ function description(p, i) {
       ? `Supplied as a ${p.packPhrase}, so a second one is ready when the first is in the wash.`
       : `Supplied as a single piece.`,
     `Weighs about ${p.weightGrams || '150'} g, so it handles and stores easily.`,
-    `The ${size} size is the one to check against your own table before ordering.`,
+    `The ${size} size is the one to check against ${vocab.check || 'your own'} before ordering.`,
     `Colour may vary slightly between screens and daylight.`,
   ];
 
@@ -185,8 +219,15 @@ function description(p, i) {
     pickAt(openers, i),
     pickAt(middles, i),
     pickAt(practical, i),
+    // A pack that is not N of the same thing has to say so in EVERY version, not one
+    // in four — a buyer who expected four identical pieces and received four
+    // different ones opens a return. Only the path knows, so it carries the sentence
+    // and this just places it.
+    p.packNote,
     careLine,
-  ].join('\n\n');
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 }
 
 /** Ten keywords: the seller's core terms, then a rotating tail built from attributes. */
@@ -238,9 +279,15 @@ function keywords(path, p, i) {
   );
   const out = [...pinned, ...rotate(spare, i * 2, 2), ...strided];
 
+  // Collapse a word that repeats back to back. The bank crosses material with nouns,
+  // and a noun that already names the material ("cotton hand towel") then yields
+  // "cotton cotton hand towel" — a keyword that looks like a bug to anyone reading
+  // the listing.
+  const dedupeWords = (k) => k.replace(/\b(\w+)(\s+\1\b)+/gi, '$1');
+
   const seen = new Set();
   return out
-    .map((k) => k.toLowerCase().replace(/\s{2,}/g, ' ').trim())
+    .map((k) => dedupeWords(k.toLowerCase()).replace(/\s{2,}/g, ' ').trim())
     .filter((k) => k && !AVOID.some((w) => k.includes(w)) && !seen.has(k) && seen.add(k))
     .slice(0, 10);
 }
@@ -252,10 +299,15 @@ function features(p, i) {
     `${cap(size)} Size`,
     seating ? `Fits ${seating}` : `Suits A ${cap(vocab.where[0])}`,
     `${cap(colour)} Finish`,
-    p.pattern ? `${cap(p.pattern)} Design` : `${cap(vocab.detail)}`,
+    // First pattern only. The joined string makes chips like "Floral, Self Design
+    // Design", which reads as a data error on a live listing.
+    p.pattern ? `${cap(p.pattern.split(',')[0].trim())} Design` : `${cap(vocab.detail)}`,
     pack > 1 ? `Pack Of ${pack}` : 'Single Piece',
     vocab.mount ? `${cap(vocab.mount)} Mounting` : 'Ready To Use',
-    'Hand Wash Gentle',
+    // Was hardcoded "Hand Wash Gentle", which is wrong on anything that is machine
+    // washable and wrong on a PVC sheet that is only ever wiped. The path already
+    // states how the product is cleaned, so take it from there.
+    cap(p.care[0] || 'hand wash gentle'),
   ].filter(Boolean);
   return rotate(all, i, 7);
 }
