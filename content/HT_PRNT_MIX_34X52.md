@@ -164,11 +164,10 @@ were discovered live on 2026-10-01 and saved to `content/BATH_LINEN_SET_SCHEMA.j
    only `630492`, `630260` and `520811`, so the `meesho` block uses **`630260`**. One
    product should not be filed under two codes: decide which is right and make both
    match. `611120` is a knitted babies'-garments code; towels normally sit under 6302.
-2. **Package dimensions** `22 x 16 x 6 cm` are still an estimate. The 0.15 kg weight is
-   the seller's.
-3. **GSM** is left blank on a field that exists on this vertical — fill it if the mill
-   states one.
-4. **Meesho product dimensions go in as `20.5 x 13.5 Inch`**, not centimetres, because
+2. **GSM** is left blank on a field that exists on this vertical — fill it if the mill
+   states one. It is also what the "Highly Absorbent" and "Quick Dry" claims on image 3
+   would need to stand on.
+3. **Meesho product dimensions go in as `20.5 x 13.5 Inch`**, not centimetres, because
    `createListing` hardcodes `product_unit` to Inch. The category does offer `cm`; using
    it needs a code change, not a config one.
 
