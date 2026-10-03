@@ -585,12 +585,30 @@ export async function countCellPills(page, rowIdx, name, occurrence = 0) {
  * tab behind "Fix errors first", so an empty draft shows nothing — which is why
  * this is reported at run time rather than by the discovery route.
  */
+/**
+ * Every axis the Variant tab offers, free-text and dropdown alike.
+ *
+ * Reading only the "Enter New …" boxes made this report "(none visible)" on a
+ * vertical whose axes were all dropdowns — a true statement about free-text inputs
+ * that reads as "this vertical has no variants" and sent the search in the wrong
+ * direction entirely. A dropdown names its axis as "Select <axis>".
+ */
 export async function readVariantAxes(page) {
-  return page.evaluate(() =>
-    [...document.querySelectorAll('input[placeholder^="Enter New"]')]
-      .map((el) => (el.placeholder || '').replace(/^Enter New\s*/i, '').trim())
-      .filter(Boolean),
-  );
+  return page.evaluate(() => {
+    const names = new Set();
+    for (const el of document.querySelectorAll('input[placeholder], [placeholder], select')) {
+      const ph = el.getAttribute('placeholder') || '';
+      if (/^Enter New/i.test(ph)) names.add(ph.replace(/^Enter New\s*/i, '').trim());
+      else if (/^Select\s+\S/i.test(ph)) names.add(ph.replace(/^Select\s*/i, '').trim());
+    }
+    // Dropdowns that carry their caption as text rather than a placeholder.
+    for (const el of document.querySelectorAll('[class*=dropdown i], [role=combobox], button')) {
+      const t = (el.innerText || '').trim();
+      const m = /^Select\s+(\S.*)$/i.exec(t);
+      if (m && m[1].length < 40) names.add(m[1].trim());
+    }
+    return [...names].filter(Boolean);
+  });
 }
 
 export async function addVariant(page, axis, value) {
@@ -601,7 +619,17 @@ export async function addVariant(page, axis, value) {
   const container = page.locator('div').filter({ hasText: new RegExp(`^${axis}$`) }).last();
   const box = container.locator('xpath=..');
 
-  const dropdown = box.locator('button[class*=DropdownButton], [class*=Dropdown]').first();
+  // Case-insensitive, and not only buttons. A CSS attribute selector matches case
+  // exactly, so `[class*=Dropdown]` silently misses a class spelled "dropdown" —
+  // which is how Mat's Size axis, a dropdown sitting right there on screen, was
+  // reported as a vertical that offers no axes at all. The "Select <axis>" control
+  // is the same thing by another name and is matched as a fallback.
+  const dropdown = box
+    .locator(
+      'button[class*=DropdownButton i], [class*=dropdown i], select, ' +
+        `[placeholder^="Select" i], [role=combobox]`,
+    )
+    .first();
   const textBox = box.locator(`input[placeholder*="Enter New"]`).first();
 
   if (await textBox.count()) {

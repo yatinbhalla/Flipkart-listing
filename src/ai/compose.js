@@ -86,6 +86,25 @@ function vocabulary(path, v) {
       check: 'the cot or stroller you have in mind',
     };
   }
+  // Flipkart files these under the generic "Mat" vertical, which also covers door and
+  // bath mats — so the productType is what distinguishes a prayer mat, not the
+  // vertical. Without this the fall-through below described an aasan as a table cover.
+  if (vertical === 'Mat' || /aasan|prayer|pooja|puja/i.test(`${path.name} ${path.productType}`)) {
+    return {
+      noun: 'aasan',
+      nouns: ['aasan', 'pooja mat', 'prayer mat', 'puja aasan'],
+      does: [
+        'gives a clean, soft place to sit through a long pooja',
+        'keeps you off a cold floor during prayer and meditation',
+        'marks out a seat in front of the mandir without taking up space',
+        'rolls up small enough to keep in the pooja shelf between uses',
+      ],
+      where: ['mandir', 'pooja room', 'prayer corner', 'meditation spot', 'living room floor'],
+      detail: list(v.pattern).join(' and ').toLowerCase() || 'traditional print',
+      mount: '',
+      check: 'the space in front of your mandir',
+    };
+  }
   // Flipkart files hand towels under Bath Linen Set; the plainer names are kept so a
   // later towel path does not have to be filed under a "set" vertical to get the copy.
   if (vertical === 'Bath Linen Set' || vertical === 'Hand Towel' || vertical === 'Towel Set') {

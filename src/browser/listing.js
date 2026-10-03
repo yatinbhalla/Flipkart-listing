@@ -489,12 +489,47 @@ async function saveVariantTab(page) {
   await F.openTab(page, F.TABS.variants);
 }
 
+/**
+ * Open Variant addition and prove it actually opened.
+ *
+ * `openTab` swallows its own timeout, so a tab that does not switch leaves the form
+ * sitting on the previous one and everything after it searches the wrong panel. On
+ * this tab that failure is especially misleading: the axis lookup then finds no axis
+ * controls and reports "this vertical offers: (none visible)", which reads as a
+ * vertical without variants rather than a tab that never opened. Observed twice on
+ * Mat, where the axes were there all along.
+ *
+ * "Add variants" is the panel's own heading, so it is the honest signal that the
+ * switch landed.
+ */
+async function openVariantTab(page, log) {
+  const heading = page.locator('text=/^Add variants$/i').first();
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    await F.openTab(page, F.TABS.variants);
+    if (await heading.isVisible({ timeout: 6000 }).catch(() => false)) return;
+    // The blocked state is a real answer, not a failed switch — report it as itself.
+    const blocked = await page
+      .locator('text=/fix the attribute errors before adding variants/i')
+      .first()
+      .isVisible()
+      .catch(() => false);
+    if (blocked) {
+      throw new Error(
+        'Flipkart will not accept variants yet — the main listing still has attribute errors.',
+      );
+    }
+    log(`  (Variant addition did not open, retry ${attempt}/3)`);
+    await page.waitForTimeout(1500);
+  }
+  throw new Error('The Variant addition tab would not open after three attempts.');
+}
+
 export async function fillVariants(
   page, variants, log, columns = null, variantImages = {}, shared = [], variantShared = {},
 ) {
   if (variants.length < 2) return;
 
-  await F.openTab(page, F.TABS.variants);
+  await openVariantTab(page, log);
 
   for (let i = 1; i < variants.length; i++) {
     const v = variants[i];

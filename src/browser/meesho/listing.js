@@ -332,6 +332,13 @@ export async function createListing(page, { path: cfg, variant, sku, images, sub
   // Bath linen only: Towel / Towel Set / Gamcha / Gamcha Set. Optional on the form,
   // so it is guarded like the rest of the category-specific attributes.
   if (M.set) await f.pick('#set', M.set, 'set');
+  // Pooja Mats and the other Carpets & Rugs categories. `dimension` is REQUIRED
+  // there and is a separate field from the product length/breadth below — it is the
+  // marketed size off a fixed list that runs in feet, so it will not always be able
+  // to state the true size and the config names the closest option on purpose.
+  if (M.dimension) await f.pick('#dimension', M.dimension, 'dimension');
+  if (M.shape) await f.pick('#shape', M.shape, 'shape');
+  if (M.features) await f.pick('#features', M.features, 'features');
   if (M.secondaryColor) await f.pick('#secondary_color', M.secondaryColor, 'secondary colour');
   if (M.includedComponents) await f.type('#included_components', M.includedComponents, 'included components');
   await f.byCandidates(ID_CANDIDATES.length, variant.sizeInches.length, 'product length');

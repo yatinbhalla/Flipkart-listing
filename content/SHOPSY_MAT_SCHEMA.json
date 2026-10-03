@@ -1,0 +1,994 @@
+{
+  "vertical": "Shopsy / Baby Bedding & Gear / Shopsy Mat",
+  "brand": "Fabrico Ventures",
+  "partner": "shopsy",
+  "tabs": {
+    "Price, Stock and Shipping": [
+      {
+        "label": "Seller SKU ID",
+        "mandatory": true,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Listing Status",
+        "mandatory": true,
+        "type": "dropdown",
+        "unit": null,
+        "options": [
+          "Select One",
+          "Active",
+          "Inactive"
+        ]
+      },
+      {
+        "label": "MRP",
+        "mandatory": true,
+        "type": "text",
+        "unit": "INR"
+      },
+      {
+        "label": "Your selling price",
+        "mandatory": true,
+        "type": "text",
+        "unit": "INR"
+      },
+      {
+        "label": "Minimum Order Quantity (MinOQ)",
+        "mandatory": false,
+        "type": "dropdown",
+        "unit": null,
+        "options": [
+          "Select One",
+          "1",
+          "2"
+        ]
+      },
+      {
+        "label": "Fullfilment by",
+        "mandatory": true,
+        "type": "dropdown",
+        "unit": null,
+        "options": [
+          "Select One",
+          "Seller"
+        ]
+      },
+      {
+        "label": "Procurement type",
+        "mandatory": false,
+        "type": "dropdown",
+        "unit": null,
+        "options": [
+          "Select One",
+          "instock",
+          "express"
+        ]
+      },
+      {
+        "label": "Procurement SLA",
+        "mandatory": true,
+        "type": "text",
+        "unit": "DAY"
+      },
+      {
+        "label": "Stock",
+        "mandatory": true,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Shipping provider",
+        "mandatory": false,
+        "type": "dropdown",
+        "unit": null,
+        "options": [
+          "Select One",
+          "Flipkart"
+        ]
+      },
+      {
+        "label": "Local handling fee",
+        "mandatory": false,
+        "type": "text",
+        "unit": "INR"
+      },
+      {
+        "label": "Zonal handling fee",
+        "mandatory": false,
+        "type": "text",
+        "unit": "INR"
+      },
+      {
+        "label": "National handling fee",
+        "mandatory": false,
+        "type": "text",
+        "unit": "INR"
+      },
+      {
+        "label": "Length",
+        "mandatory": true,
+        "type": "text",
+        "unit": "CM"
+      },
+      {
+        "label": "Breadth",
+        "mandatory": true,
+        "type": "text",
+        "unit": "CM"
+      },
+      {
+        "label": "Height",
+        "mandatory": true,
+        "type": "text",
+        "unit": "CM"
+      },
+      {
+        "label": "Weight",
+        "mandatory": true,
+        "type": "text",
+        "unit": "KG"
+      },
+      {
+        "label": "HSN",
+        "mandatory": true,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Luxury Cess",
+        "mandatory": false,
+        "type": "text",
+        "unit": "PERCENTAGE"
+      },
+      {
+        "label": "Tax Code",
+        "mandatory": true,
+        "type": "dropdown",
+        "unit": null,
+        "options": [
+          "Select One",
+          "GST_0",
+          "GST_0.25",
+          "GST_18",
+          "GST_3",
+          "GST_40",
+          "GST_5",
+          "GST_APPAREL",
+          "GST_Footwear",
+          "GST_Old_12_New_0",
+          "GST_Old_12_New_5",
+          "GST_Old_12_new_18",
+          "GST_Old_18_New_0",
+          "GST_Old_18_New_40",
+          "GST_Old_18_New_5",
+          "GST_Old_28_New_18",
+          "GST_Old_28_New_40",
+          "GST_Old_28_New_5",
+          "GST_Old_5_New_0",
+          "GST_Old_5_New_18"
+        ]
+      },
+      {
+        "label": "Country Of Origin",
+        "mandatory": true,
+        "type": "dropdown",
+        "unit": null,
+        "options": [
+          "Select One",
+          "Afghanistan",
+          "Aland Islands",
+          "Albania",
+          "Algeria",
+          "American Samoa",
+          "Andorra",
+          "Angola",
+          "Anguilla",
+          "Antarctica",
+          "Antigua and Barbuda",
+          "Argentina",
+          "Armenia",
+          "Aruba",
+          "Australia",
+          "Austria",
+          "Azerbaijan",
+          "Bahamas",
+          "Bahrain",
+          "Bangladesh",
+          "Barbados",
+          "Belarus",
+          "Belgium",
+          "Belize",
+          "Benin",
+          "Bermuda",
+          "Bhutan",
+          "Bolivia",
+          "Bosnia and Herzegovina",
+          "Botswana",
+          "Bouvet Island",
+          "Brazil",
+          "British Indian Ocean Territory",
+          "British Virgin Islands",
+          "Brunei Darussalam",
+          "Bulgaria",
+          "Burkina Faso",
+          "Burundi",
+          "Cambodia",
+          "Cameroon",
+          "Canada",
+          "Cape Verde",
+          "Cayman Islands",
+          "Central African Republic",
+          "Chad",
+          "Chile",
+          "China",
+          "Christmas Island",
+          "Cocos (Keeling) Islands",
+          "Colombia",
+          "Comoros",
+          "Congo (Brazzaville)",
+          "Congo, (Kinshasa)",
+          "Cook Islands",
+          "Costa Rica",
+          "Croatia",
+          "Cuba",
+          "Cyprus",
+          "Czech Republic",
+          "Côte d'Ivoire"
+        ]
+      },
+      {
+        "label": "Manufacturer Details",
+        "mandatory": true,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Packer Details",
+        "mandatory": true,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Importer Details",
+        "mandatory": false,
+        "type": "text",
+        "unit": null
+      }
+    ],
+    "Product Description": [
+      {
+        "label": "Model Name",
+        "mandatory": true,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Model Number",
+        "mandatory": true,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Material",
+        "mandatory": true,
+        "type": "multi-pick",
+        "unit": null,
+        "options": [
+          "Select All",
+          "Acrylic",
+          "Artificial Grass",
+          "Bamboo",
+          "Coir",
+          "Cotton",
+          "Fleece",
+          "Jute",
+          "Leather",
+          "Microfiber",
+          "Nylon",
+          "PP (Polypropylene)",
+          "PVC (Polyvinyl Chloride)",
+          "Paper",
+          "Plastic",
+          "Polycotton",
+          "Polyester",
+          "Rayon",
+          "Rexin",
+          "Rubber",
+          "Silicone",
+          "Silk",
+          "Velour",
+          "Velvet",
+          "Wool"
+        ]
+      },
+      {
+        "label": "Brand Color",
+        "mandatory": true,
+        "type": "multi-value",
+        "unit": null
+      },
+      {
+        "label": "Size",
+        "mandatory": true,
+        "type": "dropdown",
+        "unit": null,
+        "options": [
+          "Select One",
+          "Small",
+          "Medium",
+          "Large",
+          "Extra Large",
+          "Free"
+        ]
+      },
+      {
+        "label": "Color",
+        "mandatory": true,
+        "type": "multi-pick",
+        "unit": null,
+        "options": [
+          "Select All",
+          "Beige",
+          "Black",
+          "Blue",
+          "Brown",
+          "Dark Blue",
+          "Dark Green",
+          "Gold",
+          "Green",
+          "Grey",
+          "Lavender",
+          "Light Blue",
+          "Light Brown",
+          "Light Green",
+          "Maroon",
+          "Multicolor",
+          "Orange",
+          "Peach",
+          "Pink",
+          "Purple",
+          "Red",
+          "Silver",
+          "White",
+          "Yellow"
+        ]
+      },
+      {
+        "label": "Type",
+        "mandatory": true,
+        "type": "dropdown",
+        "unit": null,
+        "options": [
+          "Select One",
+          "Baby Bath",
+          "Baby Bed Protecting",
+          "Baby Play",
+          "Baby Sleeping",
+          "Bar",
+          "Bathroom",
+          "Chatai",
+          "Diaper Changing",
+          "Door",
+          "Drawer",
+          "Floor",
+          "Prayer",
+          "Stair",
+          "Toilet Lid"
+        ]
+      },
+      {
+        "label": "Pack of",
+        "mandatory": true,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Features",
+        "mandatory": true,
+        "type": "multi-pick",
+        "unit": null,
+        "options": [
+          "Select All",
+          "Anti Fatigue",
+          "Anti Slip",
+          "Bacteria Resistant",
+          "Machine Washable",
+          "Reversible",
+          "Water Absorbing",
+          "Water Resistant",
+          "NA"
+        ]
+      }
+    ],
+    "Additional Description": [
+      {
+        "label": "Design Code",
+        "mandatory": false,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "External Identifier",
+        "mandatory": false,
+        "type": "dropdown",
+        "unit": null,
+        "options": [
+          "EAN",
+          "UPC"
+        ]
+      },
+      {
+        "label": "Shape",
+        "mandatory": false,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Character",
+        "mandatory": false,
+        "type": "multi-value",
+        "unit": null
+      },
+      {
+        "label": "Pattern",
+        "mandatory": false,
+        "type": "multi-pick",
+        "unit": null,
+        "options": [
+          "Select All",
+          "3D Printed",
+          "Abstract",
+          "Animal",
+          "Cartoon",
+          "Checkered",
+          "Damask",
+          "Embroidered",
+          "Floral",
+          "Geometric",
+          "Motifs",
+          "Paisley",
+          "Polka",
+          "Printed",
+          "Self Design",
+          "Solid",
+          "Striped",
+          "Text"
+        ]
+      },
+      {
+        "label": "Description",
+        "mandatory": false,
+        "type": "long text",
+        "unit": null
+      },
+      {
+        "label": "Search Keywords",
+        "mandatory": false,
+        "type": "multi-value",
+        "unit": null
+      },
+      {
+        "label": "Key Features",
+        "mandatory": false,
+        "type": "multi-value",
+        "unit": null
+      },
+      {
+        "label": "Video URL",
+        "mandatory": false,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "EAN/UPC",
+        "mandatory": false,
+        "type": "multi-value",
+        "unit": null
+      },
+      {
+        "label": "Gift Pack",
+        "mandatory": false,
+        "type": "dropdown",
+        "unit": null,
+        "options": [
+          "Select One",
+          "Yes",
+          "No"
+        ]
+      },
+      {
+        "label": "Group ID",
+        "mandatory": false,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Sales Package",
+        "mandatory": false,
+        "type": "multi-value",
+        "unit": null
+      },
+      {
+        "label": "Inflatable",
+        "mandatory": false,
+        "type": "dropdown",
+        "unit": null,
+        "options": [
+          "Select One",
+          "Yes",
+          "No"
+        ]
+      },
+      {
+        "label": "Storage Features",
+        "mandatory": false,
+        "type": "multi-value",
+        "unit": null
+      },
+      {
+        "label": "Cushioned",
+        "mandatory": false,
+        "type": "dropdown",
+        "unit": null,
+        "options": [
+          "Select One",
+          "Yes",
+          "No"
+        ]
+      },
+      {
+        "label": "Width",
+        "mandatory": false,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Height",
+        "mandatory": false,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Depth",
+        "mandatory": false,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Weight",
+        "mandatory": false,
+        "type": "text",
+        "unit": "g"
+      },
+      {
+        "label": "Diameter",
+        "mandatory": false,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Other Dimensions",
+        "mandatory": false,
+        "type": "multi-value",
+        "unit": null
+      },
+      {
+        "label": "Safety Features",
+        "mandatory": false,
+        "type": "multi-value",
+        "unit": null
+      },
+      {
+        "label": "Other Features",
+        "mandatory": false,
+        "type": "multi-value",
+        "unit": null
+      },
+      {
+        "label": "Domestic Warranty",
+        "mandatory": false,
+        "type": "dropdown",
+        "unit": null,
+        "options": [
+          "Year",
+          "Months"
+        ]
+      },
+      {
+        "label": "International Warranty",
+        "mandatory": false,
+        "type": "dropdown",
+        "unit": null,
+        "options": [
+          "Year",
+          "Months"
+        ]
+      },
+      {
+        "label": "Warranty Summary",
+        "mandatory": false,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Warranty Service Type",
+        "mandatory": false,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Covered in Warranty",
+        "mandatory": false,
+        "type": "text",
+        "unit": null
+      },
+      {
+        "label": "Not Covered in Warranty",
+        "mandatory": false,
+        "type": "text",
+        "unit": null
+      }
+    ]
+  },
+  "mandatoryCount": 25,
+  "mandatory": [
+    {
+      "tab": "Price, Stock and Shipping",
+      "label": "Seller SKU ID",
+      "mandatory": true,
+      "type": "text",
+      "unit": null
+    },
+    {
+      "tab": "Price, Stock and Shipping",
+      "label": "Listing Status",
+      "mandatory": true,
+      "type": "dropdown",
+      "unit": null,
+      "options": [
+        "Select One",
+        "Active",
+        "Inactive"
+      ]
+    },
+    {
+      "tab": "Price, Stock and Shipping",
+      "label": "MRP",
+      "mandatory": true,
+      "type": "text",
+      "unit": "INR"
+    },
+    {
+      "tab": "Price, Stock and Shipping",
+      "label": "Your selling price",
+      "mandatory": true,
+      "type": "text",
+      "unit": "INR"
+    },
+    {
+      "tab": "Price, Stock and Shipping",
+      "label": "Fullfilment by",
+      "mandatory": true,
+      "type": "dropdown",
+      "unit": null,
+      "options": [
+        "Select One",
+        "Seller"
+      ]
+    },
+    {
+      "tab": "Price, Stock and Shipping",
+      "label": "Procurement SLA",
+      "mandatory": true,
+      "type": "text",
+      "unit": "DAY"
+    },
+    {
+      "tab": "Price, Stock and Shipping",
+      "label": "Stock",
+      "mandatory": true,
+      "type": "text",
+      "unit": null
+    },
+    {
+      "tab": "Price, Stock and Shipping",
+      "label": "Length",
+      "mandatory": true,
+      "type": "text",
+      "unit": "CM"
+    },
+    {
+      "tab": "Price, Stock and Shipping",
+      "label": "Breadth",
+      "mandatory": true,
+      "type": "text",
+      "unit": "CM"
+    },
+    {
+      "tab": "Price, Stock and Shipping",
+      "label": "Height",
+      "mandatory": true,
+      "type": "text",
+      "unit": "CM"
+    },
+    {
+      "tab": "Price, Stock and Shipping",
+      "label": "Weight",
+      "mandatory": true,
+      "type": "text",
+      "unit": "KG"
+    },
+    {
+      "tab": "Price, Stock and Shipping",
+      "label": "HSN",
+      "mandatory": true,
+      "type": "text",
+      "unit": null
+    },
+    {
+      "tab": "Price, Stock and Shipping",
+      "label": "Tax Code",
+      "mandatory": true,
+      "type": "dropdown",
+      "unit": null,
+      "options": [
+        "Select One",
+        "GST_0",
+        "GST_0.25",
+        "GST_18",
+        "GST_3",
+        "GST_40",
+        "GST_5",
+        "GST_APPAREL",
+        "GST_Footwear",
+        "GST_Old_12_New_0",
+        "GST_Old_12_New_5",
+        "GST_Old_12_new_18",
+        "GST_Old_18_New_0",
+        "GST_Old_18_New_40",
+        "GST_Old_18_New_5",
+        "GST_Old_28_New_18",
+        "GST_Old_28_New_40",
+        "GST_Old_28_New_5",
+        "GST_Old_5_New_0",
+        "GST_Old_5_New_18"
+      ]
+    },
+    {
+      "tab": "Price, Stock and Shipping",
+      "label": "Country Of Origin",
+      "mandatory": true,
+      "type": "dropdown",
+      "unit": null,
+      "options": [
+        "Select One",
+        "Afghanistan",
+        "Aland Islands",
+        "Albania",
+        "Algeria",
+        "American Samoa",
+        "Andorra",
+        "Angola",
+        "Anguilla",
+        "Antarctica",
+        "Antigua and Barbuda",
+        "Argentina",
+        "Armenia",
+        "Aruba",
+        "Australia",
+        "Austria",
+        "Azerbaijan",
+        "Bahamas",
+        "Bahrain",
+        "Bangladesh",
+        "Barbados",
+        "Belarus",
+        "Belgium",
+        "Belize",
+        "Benin",
+        "Bermuda",
+        "Bhutan",
+        "Bolivia",
+        "Bosnia and Herzegovina",
+        "Botswana",
+        "Bouvet Island",
+        "Brazil",
+        "British Indian Ocean Territory",
+        "British Virgin Islands",
+        "Brunei Darussalam",
+        "Bulgaria",
+        "Burkina Faso",
+        "Burundi",
+        "Cambodia",
+        "Cameroon",
+        "Canada",
+        "Cape Verde",
+        "Cayman Islands",
+        "Central African Republic",
+        "Chad",
+        "Chile",
+        "China",
+        "Christmas Island",
+        "Cocos (Keeling) Islands",
+        "Colombia",
+        "Comoros",
+        "Congo (Brazzaville)",
+        "Congo, (Kinshasa)",
+        "Cook Islands",
+        "Costa Rica",
+        "Croatia",
+        "Cuba",
+        "Cyprus",
+        "Czech Republic",
+        "Côte d'Ivoire"
+      ]
+    },
+    {
+      "tab": "Price, Stock and Shipping",
+      "label": "Manufacturer Details",
+      "mandatory": true,
+      "type": "text",
+      "unit": null
+    },
+    {
+      "tab": "Price, Stock and Shipping",
+      "label": "Packer Details",
+      "mandatory": true,
+      "type": "text",
+      "unit": null
+    },
+    {
+      "tab": "Product Description",
+      "label": "Model Name",
+      "mandatory": true,
+      "type": "text",
+      "unit": null
+    },
+    {
+      "tab": "Product Description",
+      "label": "Model Number",
+      "mandatory": true,
+      "type": "text",
+      "unit": null
+    },
+    {
+      "tab": "Product Description",
+      "label": "Material",
+      "mandatory": true,
+      "type": "multi-pick",
+      "unit": null,
+      "options": [
+        "Select All",
+        "Acrylic",
+        "Artificial Grass",
+        "Bamboo",
+        "Coir",
+        "Cotton",
+        "Fleece",
+        "Jute",
+        "Leather",
+        "Microfiber",
+        "Nylon",
+        "PP (Polypropylene)",
+        "PVC (Polyvinyl Chloride)",
+        "Paper",
+        "Plastic",
+        "Polycotton",
+        "Polyester",
+        "Rayon",
+        "Rexin",
+        "Rubber",
+        "Silicone",
+        "Silk",
+        "Velour",
+        "Velvet",
+        "Wool"
+      ]
+    },
+    {
+      "tab": "Product Description",
+      "label": "Brand Color",
+      "mandatory": true,
+      "type": "multi-value",
+      "unit": null
+    },
+    {
+      "tab": "Product Description",
+      "label": "Size",
+      "mandatory": true,
+      "type": "dropdown",
+      "unit": null,
+      "options": [
+        "Select One",
+        "Small",
+        "Medium",
+        "Large",
+        "Extra Large",
+        "Free"
+      ]
+    },
+    {
+      "tab": "Product Description",
+      "label": "Color",
+      "mandatory": true,
+      "type": "multi-pick",
+      "unit": null,
+      "options": [
+        "Select All",
+        "Beige",
+        "Black",
+        "Blue",
+        "Brown",
+        "Dark Blue",
+        "Dark Green",
+        "Gold",
+        "Green",
+        "Grey",
+        "Lavender",
+        "Light Blue",
+        "Light Brown",
+        "Light Green",
+        "Maroon",
+        "Multicolor",
+        "Orange",
+        "Peach",
+        "Pink",
+        "Purple",
+        "Red",
+        "Silver",
+        "White",
+        "Yellow"
+      ]
+    },
+    {
+      "tab": "Product Description",
+      "label": "Type",
+      "mandatory": true,
+      "type": "dropdown",
+      "unit": null,
+      "options": [
+        "Select One",
+        "Baby Bath",
+        "Baby Bed Protecting",
+        "Baby Play",
+        "Baby Sleeping",
+        "Bar",
+        "Bathroom",
+        "Chatai",
+        "Diaper Changing",
+        "Door",
+        "Drawer",
+        "Floor",
+        "Prayer",
+        "Stair",
+        "Toilet Lid"
+      ]
+    },
+    {
+      "tab": "Product Description",
+      "label": "Pack of",
+      "mandatory": true,
+      "type": "text",
+      "unit": null
+    },
+    {
+      "tab": "Product Description",
+      "label": "Features",
+      "mandatory": true,
+      "type": "multi-pick",
+      "unit": null,
+      "options": [
+        "Select All",
+        "Anti Fatigue",
+        "Anti Slip",
+        "Bacteria Resistant",
+        "Machine Washable",
+        "Reversible",
+        "Water Absorbing",
+        "Water Resistant",
+        "NA"
+      ]
+    }
+  ]
+}
