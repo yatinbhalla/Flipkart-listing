@@ -94,7 +94,7 @@ function vocabulary(path, v) {
       noun: 'aasan',
       nouns: ['aasan', 'pooja mat', 'prayer mat', 'puja aasan'],
       does: [
-        'gives a clean, soft place to sit through a long pooja',
+        'gives a clean and soft place to sit through a long pooja',
         'keeps you off a cold floor during prayer and meditation',
         'marks out a seat in front of the mandir without taking up space',
         'rolls up small enough to keep in the pooja shelf between uses',

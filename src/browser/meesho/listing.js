@@ -408,12 +408,36 @@ export async function createListing(page, { path: cfg, variant, sku, images, sub
   return finishSubmission(page, log);
 }
 
+/**
+ * A visible, enabled button with this label, or null.
+ *
+ * Two strategies, because one of them goes blind at exactly the wrong moment. MUI
+ * marks the rest of the page `aria-hidden` while its dialog is open, and a `role=`
+ * selector queries the accessibility tree — so every page button reports count=0
+ * while the flagged-words modal is up, including the Submit Catalog sitting in plain
+ * view. The text form is ordinary DOM matching and is unaffected.
+ */
+async function findButton(page, name) {
+  const candidates = [
+    page.locator(`role=button[name="${name}"]`),
+    page.locator(`button:has-text("${name}")`),
+  ];
+  for (const locator of candidates) {
+    const count = await locator.count().catch(() => 0);
+    for (let i = 0; i < Math.min(count, 4); i++) {
+      const button = locator.nth(i);
+      if (!(await button.isVisible().catch(() => false))) continue;
+      if (await button.isDisabled().catch(() => false)) continue;
+      return button;
+    }
+  }
+  return null;
+}
+
 /** Whether any button the declaration gates is live — the fallback proof of a tick. */
 async function proceedEnabled(page) {
   for (const name of ['Proceed', 'Confirm', 'Submit', 'Yes']) {
-    const button = page.locator(`role=button[name="${name}"]`).first();
-    if (!(await button.isVisible().catch(() => false))) continue;
-    if (!(await button.isDisabled().catch(() => true))) return true;
+    if (await findButton(page, name)) return true;
   }
   return false;
 }
@@ -429,59 +453,167 @@ async function proceedEnabled(page) {
  * other honest signal: whether the button the declaration gates came alive.
  */
 async function tickDeclaration(page, log) {
-  const sentence = page
-    .locator('text=/I understand that all products|I hereby|I confirm|I agree/i')
-    .first();
-  if (!(await sentence.isVisible().catch(() => false))) return 'absent';
+  const WANT = 'I understand that all products';
+  // Let it render: the declaration appears with the warning modal, and deciding on
+  // the first pass reports "absent" about a box that is about to exist.
+  await page
+    .getByText(WANT, { exact: false })
+    .first()
+    .waitFor({ state: 'visible', timeout: 4000 })
+    .catch(() => {});
 
-  // The box belonging to THIS sentence — the nearest ancestor that holds one —
-  // rather than the first checkbox anywhere on the page.
-  const scope = sentence
-    .locator('xpath=ancestor::*[.//input[@type="checkbox"] or .//*[@role="checkbox"]][1]')
-    .first();
-  const box = scope.locator('input[type="checkbox"], [role="checkbox"]').first();
-  const present = await box
-    .count()
-    .then((n) => n > 0)
-    .catch(() => false);
+  // Tag the control browser-side, then let Playwright deliver a real pointer click.
+  //
+  // WHY this shape, and not a locator: Meesho's declaration is not an <input> with a
+  // <label>. It is a styled <svg> sitting beside a text node, and only a genuine
+  // pointer click on the svg toggles it — clicking the words does nothing. That is
+  // also why the page's HTML holds no checkbox for it and every selector written
+  // against one found nothing to tick. Approach taken from the seller's existing
+  // Meesho app, where it is already proven against this form.
+  const tagged = await page
+    .evaluate((wanted) => {
+      const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
+      const w = wanted.toLowerCase();
+      document.querySelectorAll('[data-fk-cb]').forEach((e) => e.removeAttribute('data-fk-cb'));
 
-  const state = async () => {
-    if (!present) return null;
-    const native = await box.isChecked().catch(() => null);
-    if (native !== null) return native;
-    const aria = await box.getAttribute('aria-checked').catch(() => null);
-    if (aria !== null) return aria === 'true';
-    const cls = (await box.getAttribute('class').catch(() => '')) || '';
-    return /checked/i.test(cls) ? true : null;
+      // textContent, not innerText: no layout pass, and it sees text split across
+      // child elements. Capped, because scanning every node on a miss is how a
+      // lookup turns into a frozen run.
+      const cands = [];
+      for (const el of document.querySelectorAll('body *')) {
+        if (el.children.length > 2) continue;
+        const t = norm(el.textContent).toLowerCase();
+        if (!t || !t.includes(w)) continue;
+        cands.push({ el, exact: t === w, leaf: el.children.length === 0, len: t.length });
+        if (cands.length >= 200) break;
+      }
+      const visible = (el) =>
+        el.offsetParent !== null || (el.getClientRects && el.getClientRects().length);
+      const vis = cands.filter((c) => visible(c.el));
+      if (!vis.length) return null;
+      vis.sort((a, b) => b.exact - a.exact || b.leaf - a.leaf || a.len - b.len);
+      const textEl = vis[0].el;
+
+      // A real input in the row, if this form ever grows one.
+      let row = textEl;
+      for (let i = 0; i < 5 && row.parentElement; i++) {
+        const input = row.querySelector && row.querySelector('input[type="checkbox"]');
+        if (input) {
+          input.setAttribute('data-fk-cb', '1');
+          return 'input';
+        }
+        row = row.parentElement;
+      }
+      // The svg immediately before the words — the shape this form actually uses.
+      if (textEl.previousElementSibling?.tagName.toLowerCase() === 'svg') {
+        textEl.previousElementSibling.setAttribute('data-fk-cb', '1');
+        return 'svg-prev';
+      }
+      // Any svg in the enclosing row.
+      row = textEl;
+      for (let i = 0; i < 4 && row.parentElement; i++) {
+        const svg = row.querySelector && row.querySelector('svg');
+        if (svg) {
+          svg.setAttribute('data-fk-cb', '1');
+          return 'svg-row';
+        }
+        row = row.parentElement;
+      }
+      (textEl.parentElement || textEl).setAttribute('data-fk-cb', '1');
+      return 'row';
+    }, WANT)
+    .catch(() => null);
+
+  if (!tagged) return 'absent';
+
+  const clean = () =>
+    page
+      .evaluate(() => document.querySelectorAll('[data-fk-cb]').forEach((e) => e.removeAttribute('data-fk-cb')))
+      .catch(() => {});
+
+  // A drawn box has no checked property, but it DOES redraw: an empty <rect> becomes
+  // a filled box with a tick. So compare the svg's own markup before and after, and
+  // only call it ticked when the drawing actually changed. Claiming success on a
+  // click that landed on a non-interactive svg is what produced "ticked the
+  // declaration" against a box that was still visibly empty.
+  // Re-find the box from the sentence every time, and read the DRAWING. Reading the
+  // tagged element instead gave a false pass: React drops the data attribute on
+  // re-render, querySelector then returns nothing, and "" !== previous markup counted
+  // as a tick — which is how an empty box was reported as ticked twice over.
+  const markup = () =>
+    page
+      .evaluate((wanted) => {
+        const w = wanted.toLowerCase();
+        for (const p of document.querySelectorAll('p')) {
+          if (!(p.textContent || '').toLowerCase().includes(w)) continue;
+          const svg = p.previousElementSibling;
+          if (svg && svg.tagName.toLowerCase() === 'svg') return svg.outerHTML;
+        }
+        return '';
+      }, WANT)
+      .catch(() => '');
+
+  /**
+   * Is the box drawn as ticked? A positive test, not a diff.
+   *
+   * An empty box is a bare stroked <rect>; a ticked one gains a <path> and a fill.
+   * Comparing before and after passed three times on an empty box — once because the
+   * element had been re-rendered away (missing !== previous) and once because the
+   * "before" read came back empty (anything !== nothing). Only "it now looks ticked"
+   * is safe to believe.
+   */
+  const isTicked = async () => {
+    const svg = await markup();
+    if (!svg) return null;
+    return /<path/i.test(svg) || /fill="(?!none)[^"]+"/i.test(svg);
   };
 
-  if ((await state()) === true) return 'already';
+  // Dispatch the event on the element rather than clicking at a point. The seller
+  // noticed the form behind the modal scrolling up and down, and Playwright's click
+  // scrolls the target into view first — so the box moves between the scroll and the
+  // press and the click lands on whatever slid into that spot. That reports success
+  // and ticks nothing, which is what every "ticked" log so far actually was.
+  const fire = async (selector) =>
+    page
+      .locator(selector)
+      .first()
+      .dispatchEvent('click')
+      .then(() => true)
+      .catch(() => false);
 
-  const wasEnabled = await proceedEnabled(page);
-  let acted = false;
-  if (present) {
-    acted =
-      (await box.click({ timeout: 5000 }).then(() => true).catch(() => false)) ||
-      (await box.click({ force: true, timeout: 5000 }).then(() => true).catch(() => false));
+  let changed = (await isTicked()) === true;
+  for (const target of ['[data-fk-cb="1"]', '[data-fk-cb-row="1"]']) {
+    if (changed) break;
+    if (target.includes('row')) {
+      await page
+        .evaluate(() => {
+          const el = document.querySelector('[data-fk-cb="1"]');
+          if (el?.parentElement) el.parentElement.setAttribute('data-fk-cb-row', '1');
+        })
+        .catch(() => {});
+    }
+    if (await fire(target)) {
+      await page.waitForTimeout(700);
+      changed = (await isTicked()) === true;
+    }
   }
-  if (!acted) {
-    // Last resort: the drawn box sits immediately left of the words.
-    const r = await sentence.boundingBox().catch(() => null);
-    if (!r) return 'failed';
-    await page.mouse.click(r.x - 18, r.y + r.height / 2);
-    acted = true;
-  }
-  await page.waitForTimeout(800);
+  await page
+    .evaluate(() =>
+      document.querySelectorAll('[data-fk-cb-row]').forEach((e) => e.removeAttribute('data-fk-cb-row')),
+    )
+    .catch(() => {});
 
-  if ((await state()) === true) {
-    log('  ticked the declaration');
-    return 'ticked';
+  if (!changed) {
+    await clean();
+    log(`  the declaration box did not change when clicked — ${await captureState(page, 'tick-failed')}`);
+    return 'failed';
   }
-  if (!wasEnabled && (await proceedEnabled(page))) {
-    log('  ticked the declaration (the button it gates came alive)');
-    return 'ticked';
-  }
-  return 'failed';
+  await clean();
+  log(`  ticked the declaration (${tagged}) — ${await captureState(page, 'after-tick')}`);
+  // The button it gates coming alive is the only readable confirmation this form
+  // offers; a drawn svg reports no checked state of its own.
+  if (await proceedEnabled(page)) log('  a confirmation button is now live');
+  return 'ticked';
 }
 
 /**
@@ -500,10 +632,16 @@ async function tickDeclaration(page, log) {
 export async function finishSubmission(page, log, { timeout = 120000 } = {}) {
   const deadline = Date.now() + timeout;
   const clicked = [];
-  // Attempts at the two things that can fail silently. Both used to retry forever,
-  // which is how a stuck modal ate the whole deadline instead of reporting itself.
-  let gateFailures = 0;
+  // Attempts at the thing that can fail silently: a box whose state cannot be read
+  // would otherwise be toggled on and off for the rest of the deadline.
   let declarationTries = 0;
+  let declarationDone = false;
+  // Set once the flagged-words modal turns out to have nothing removable in it, which
+  // changes the route through: accept the declaration and submit, rather than trying
+  // to edit the copy on the spot.
+  let gateIgnored = false;
+  let submitPresses = 0;
+  let describedIdle = false;
   const off = () => !/\/single\/add/.test(page.url());
 
   while (Date.now() < deadline) {
@@ -516,9 +654,13 @@ export async function finishSubmission(page, log, { timeout = 120000 } = {}) {
     // flagged-words modal and gates the buttons under it, so it is worth accepting
     // whether or not the gate is up — and ordering it after the gate meant a gate
     // that would not clear stopped the run with the box never once attempted.
-    if (declarationTries < 3) {
+    if (!declarationDone && declarationTries < 3) {
       const tick = await tickDeclaration(page, log);
       if (tick === 'ticked') {
+        // Exactly once. A drawn svg reports no checked state of its own, so "tick it
+        // again" cannot tell accepted from not-accepted — it only toggles. Ticking on
+        // every pass flipped it 123 times in one run and ended on the deadline.
+        declarationDone = true;
         clicked.push('declaration');
         continue;
       }
@@ -527,37 +669,30 @@ export async function finishSubmission(page, log, { timeout = 120000 } = {}) {
       if (tick === 'failed') declarationTries += 1;
     }
 
-    const gate = await clearBrandGate(page, log);
-    if (gate.changed) {
-      clicked.push('brand gate');
-      continue;
-    }
-    // A gate still standing after two honest attempts is not going to yield to a
-    // third. Say so while the modal is still on screen to be looked at.
-    if (gate.seen && ++gateFailures >= 2) {
-      const shot = await captureState(page, 'brand-gate-stuck');
-      log(`  the flagged-words modal could not be cleared — captured in ${shot}`);
-      return {
-        ok: false,
-        submitted: false,
-        problems: [
-          'Meesho flagged words in the copy and the modal could not be cleared automatically. ' +
-            `Clear it in the browser, or edit the path copy. Modal captured in ${shot}.`,
-        ],
-      };
-    }
-    if (gate.seen) continue;
-
-    // Then whichever confirmation this catalogue happens to show.
+    // Order, at the seller's instruction and matching their existing Meesho app:
+    // checkbox first, then a straightforward confirmation button, and only then the
+    // crossed-out words. The modal is never closed — closing it is what kept taking
+    // the submission form off screen, and the warning itself is ignorable, not
+    // something to clear.
     let acted = false;
-    for (const name of ['Update Changes', 'Proceed', 'Confirm', 'Yes', 'Submit Catalog']) {
-      const button = page.locator(`role=button[name="${name}"]`).first();
-      if (!(await button.isVisible().catch(() => false))) continue;
-      if (await button.isDisabled().catch(() => false)) continue;
-      // Submit Catalog is only re-pressed if nothing else has happened yet, so a
-      // stalled dialog does not turn into a second submission.
-      if (name === 'Submit Catalog' && clicked.length) continue;
-      await button.click({ timeout: 15000 }).catch(() => {});
+    const names = ['Proceed', 'Confirm', 'Yes', 'Update Changes', 'Submit Catalog'];
+    for (const name of names) {
+      const button = await findButton(page, name);
+      if (!button) continue;
+      // Submit Catalog may need a second press — the first can land before the
+      // declaration is accepted — but not an unbounded number, or a dialog that
+      // never closes turns into repeated submissions.
+      if (name === 'Submit Catalog' && submitPresses >= 3) continue;
+      // Count the press only if the click actually landed. Incrementing first and
+      // swallowing the failure spent the whole allowance on clicks the modal's
+      // backdrop intercepted, so by the time the button was genuinely reachable
+      // there were no presses left and the run sat out its deadline.
+      const landed = await button
+        .click({ timeout: 15000 })
+        .then(() => true)
+        .catch(() => false);
+      if (!landed) continue;
+      if (name === 'Submit Catalog') submitPresses += 1;
       clicked.push(name);
       acted = true;
       await page.waitForTimeout(2500);
@@ -565,11 +700,52 @@ export async function finishSubmission(page, log, { timeout = 120000 } = {}) {
     }
     if (acted) continue;
 
+    // Last, the crossed-out words: only worth striking out when nothing simpler has
+    // moved the form on. A gate with no removable chips is Meesho flagging an
+    // ordinary word — the article "an" matches a brand of that name, and the modal
+    // says so itself: "if product is not related to the brand, please ignore the
+    // warning". So it is noted once and left alone rather than treated as a failure.
+    const gate = await clearBrandGate(page, log);
+    if (gate.changed) {
+      clicked.push('brand gate');
+      continue;
+    }
+    if (gate.seen && !gateIgnored) {
+      gateIgnored = true;
+      log(`  nothing to strike out — ignorable warning (${await captureState(page, 'brand-gate')})`);
+    }
+
     // Nothing to act on. If the form is reporting errors, it is not going to submit.
     const errors = await readErrors(page);
     if (errors.length) {
       log(`  refused: ${errors.join(' | ')}`);
       return { ok: false, submitted: false, problems: errors };
+    }
+    // Say what "nothing to act on" actually looks like, once. Without this the loop
+    // simply goes quiet until the deadline and the state that stalled it is gone by
+    // the time anyone can look.
+    if (!describedIdle) {
+      describedIdle = true;
+      const seen = await page.evaluate(() => {
+        const vis = (el) => {
+          const r = el.getBoundingClientRect();
+          return r.width > 4 && r.height > 4;
+        };
+        const buttons = [...document.querySelectorAll('button,[role=button]')]
+          .filter(vis)
+          .map((b) => `${(b.innerText || '').trim().slice(0, 28)}${b.disabled ? ' [disabled]' : ''}`)
+          .filter((t) => t && t !== '[disabled]');
+        const boxes = [...document.querySelectorAll('input[type=checkbox],[role=checkbox]')].map(
+          (c) =>
+            `${c.id || c.name || '(unnamed)'}=${c.checked ?? c.getAttribute('aria-checked')}${vis(c) ? '' : ' [hidden]'}`,
+        );
+        const decl = /I understand that all products/i.test(document.body.innerText);
+        return { buttons: [...new Set(buttons)], boxes, decl, url: location.pathname };
+      });
+      log(`  idle — declaration on page: ${seen.decl ? 'yes' : 'no'}`);
+      log(`  idle — checkboxes: ${seen.boxes.join(', ') || '(none)'}`);
+      log(`  idle — buttons: ${seen.buttons.join(' | ') || '(none)'}`);
+      log(`  idle — captured ${await captureState(page, 'submit-idle')}`);
     }
     await page.waitForTimeout(1500);
   }
@@ -599,6 +775,17 @@ async function captureState(page, tag) {
   const stamp = `${Date.now()}_${tag}`;
   await fs.mkdir('data/runs', { recursive: true }).catch(() => {});
   await page.screenshot({ path: `data/runs/${stamp}.png` }).catch(() => {});
+  // The whole body, alongside the dialog. Scoping the capture to the dialog is what
+  // left the declaration unaccounted for: it is plainly on screen beside the modal,
+  // but it is not inside the dialog element, so a dialog-only dump said it did not
+  // exist and sent the search after the modal instead of after the checkbox.
+  await fs
+    .writeFile(
+      `data/runs/${stamp}_body.html`,
+      await page.evaluate(() => document.body.innerHTML).catch(() => ''),
+      'utf8',
+    )
+    .catch(() => {});
   const html = await page
     .evaluate(() => {
       // MUI's dialog is a sibling of its backdrop, not a child, and the paper itself
@@ -634,9 +821,6 @@ export async function clearBrandGate(page, log) {
       .filter(Boolean),
   );
   log(`  brand gate flagged: ${[...new Set(words)].join(', ') || '(unnamed)'}`);
-  // No words found means the selectors above missed, and clicking blind is how this
-  // spun in the first place. Write the modal down so the next pass can be aimed.
-  if (!words.length) log(`  gate markup captured in ${await captureState(page, 'brand-gate')}`);
 
   let removed = 0;
   for (let i = 0; i < 10; i++) {
