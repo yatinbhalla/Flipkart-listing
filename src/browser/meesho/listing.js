@@ -30,6 +30,9 @@ const ID_CANDIDATES = {
   netQuantity: ['#multipack', '#pack_of'],
   length: ['#product_length', '#length_size'],
   breadth: ['#product_breadth', '#width_size'],
+  // Baby Towels names the same attribute primary_color; the table and blanket
+  // categories call it color. Picking by one id alone leaves the other unfilled.
+  colour: ['#color', '#primary_color'],
 };
 
 /** Meesho rejects a description over this, and the stored copy targets Flipkart's 5000. */
@@ -320,7 +323,7 @@ export async function createListing(page, { path: cfg, variant, sku, images, sub
   await f.typeVerified('#supplier_sku_id', sku, 'row sku id');
 
   log('== product details');
-  await f.pick('#color', M.color, 'colour');
+  if (M.color) await f.byCandidates(ID_CANDIDATES.colour, M.color, 'colour');
   await f.pick('#generic_name', M.genericName, 'generic name');
   await f.pick('#material', M.material, 'material');
   await f.byCandidates(ID_CANDIDATES.netQuantity, M.multipack || '1', 'net quantity');

@@ -545,14 +545,31 @@ export async function setCellPills(page, rowIdx, name, values, occurrence = 0) {
  */
 export async function selectVariantImageTarget(page, value) {
   const want = String(value).trim();
-  const item = page
+  // Exact first, then containing. The side menu names a row by EVERY axis the vertical
+  // offers, not just the one that varies — a colour variant on the baby towels is
+  // listed as "Light Blue, Units - 1", so an exact match found nothing while the row
+  // was sitting there. Exact stays first so a vertical with both "Blue" and
+  // "Light Blue" still picks the right one.
+  const exact = page
     .locator('[class*=SideMenuItem]')
     .filter({ has: page.locator(`[class*=SideMenuItemText]:text-is("${want}")`) })
     .first();
-  const found = await item
-    .waitFor({ state: 'visible', timeout: 20000 })
+  const partial = page
+    .locator('[class*=SideMenuItem]')
+    .filter({ has: page.locator(`[class*=SideMenuItemText]:has-text("${want}")`) })
+    .first();
+  let item = exact;
+  let found = await exact
+    .waitFor({ state: 'visible', timeout: 8000 })
     .then(() => true)
     .catch(() => false);
+  if (!found) {
+    item = partial;
+    found = await partial
+      .waitFor({ state: 'visible', timeout: 12000 })
+      .then(() => true)
+      .catch(() => false);
+  }
   if (!found) {
     const seen = await page
       .locator('[class*=SideMenuItemText]')

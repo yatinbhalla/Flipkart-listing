@@ -81,9 +81,37 @@ for (const tab of [F.TABS.price, F.TABS.description, F.TABS.additional]) {
     return [...new Set(out)];
   });
   if (flagged.length) log(`  !! ${tab} flagged: ${flagged.join('  ||  ')}`);
+  // Read every field back. A tab counter saying 14/15 does not say WHICH one, and
+  // the form scrolls inside its own container so a screenshot shows only the top.
+  const values = await page
+    .evaluate(() => {
+      const out = [];
+      for (const el of document.querySelectorAll('input, textarea')) {
+        const r = el.getBoundingClientRect();
+        if (r.width < 10) continue;
+        let label = '';
+        for (let n = el.parentElement, i = 0; n && i < 5 && !label; n = n.parentElement, i++) {
+          const t = (n.innerText || '').split('\n').map((s) => s.trim()).filter(Boolean)[0];
+          if (t && t.length < 50) label = t;
+        }
+        const chips = el.closest('div')?.parentElement?.innerText?.replace(/\s+/g, ' ').trim() || '';
+        out.push(`${label || '(?)'} = ${JSON.stringify(el.value || '')}${el.value ? '' : ` [row: ${chips.slice(0, 60)}]`}`);
+      }
+      return out;
+    })
+    .catch(() => []);
+  log(`  ${tab} values:`);
+  values.forEach((v) => log(`      ${v}`));
+  // The form lives in a scroll container sized to the viewport, and scrollSection's
+  // selector does not match this layout — four stepped captures came out identical.
+  // Growing the window makes the container render its whole height instead.
+  const original = page.viewportSize();
+  await page.setViewportSize({ width: 1500, height: 2600 }).catch(() => {});
+  await page.waitForTimeout(1200);
   const file = `data/runs/${Date.now()}_${tab.replace(/[^a-z]+/gi, '-')}.png`;
   await page.screenshot({ path: file, fullPage: true }).catch(() => {});
   log(`  screenshot: ${file}`);
+  if (original) await page.setViewportSize(original).catch(() => {});
 }
 
 // Leaving a tab IS the save, and validation only runs then — the tab reads clean
@@ -103,6 +131,41 @@ log(hits.length ? hits.map((h) => `  • ${h}`).join('\n') : '  (no error text f
 await page
   .screenshot({ path: `data/runs/${Date.now()}_price-after-bounce.png`, fullPage: true })
   .catch(() => {});
+
+// What is actually in the Color row? It shows "1 Selected · Pink" on screen while
+// Flipkart reports color_for_refiner missing, and every explanation so far has been
+// wrong — so read the row itself rather than reasoning about it.
+log('\n== the Color row, as the DOM has it ==');
+await F.openTab(page, F.TABS.description);
+await page.waitForTimeout(1200);
+const colourRow = await page
+  .evaluate(() => {
+    const out = {};
+    for (const el of document.querySelectorAll('*')) {
+      if (el.children.length) continue;
+      const t = (el.innerText || '').replace(/\s+/g, ' ').trim();
+      if (t !== 'Color' && t !== 'Color *') continue;
+      let row = el;
+      for (let i = 0; i < 4 && row.parentElement; i++) row = row.parentElement;
+      out.html = row.outerHTML.slice(0, 2500);
+      out.text = (row.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+      break;
+    }
+    // Anything the form holds under a refiner name, anywhere on the page.
+    out.refinerInputs = [...document.querySelectorAll('[name*=refiner i], [id*=refiner i]')].map(
+      (e) => `${e.tagName.toLowerCase()} name=${e.name || ''} id=${e.id || ''} value=${JSON.stringify(e.value || '')}`,
+    );
+    return out;
+  })
+  .catch(() => ({}));
+log(`  row text: ${colourRow.text || '(not found)'}`);
+log(`  refiner inputs: ${(colourRow.refinerInputs || []).join(' | ') || '(none)'}`);
+if (colourRow.html) {
+  const fsmod = await import('fs/promises');
+  const file = `data/runs/${Date.now()}_color-row.html`;
+  await fsmod.writeFile(file, colourRow.html, 'utf8').catch(() => {});
+  log(`  row markup: ${file}`);
+}
 
 log('\n== opening Variant addition ==');
 // openTab swallows its timeout, so the switch has to be proved rather than assumed —

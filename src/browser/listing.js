@@ -504,6 +504,13 @@ async function saveVariantTab(page) {
  */
 async function openVariantTab(page, log) {
   const heading = page.locator('text=/^Add variants$/i').first();
+  // Bounce out and back before asking. The last tab filled has never been left, so it
+  // is unsaved and unvalidated — and Flipkart judges the listing incomplete and
+  // refuses variants. A probe that walked the tabs first opened this panel on its
+  // first attempt where the run, going straight here from the last field, did not.
+  await F.openTab(page, F.TABS.images);
+  await F.openTab(page, F.TABS.price);
+
   for (let attempt = 1; attempt <= 3; attempt++) {
     await F.openTab(page, F.TABS.variants);
     if (await heading.isVisible({ timeout: 6000 }).catch(() => false)) return;
@@ -514,8 +521,49 @@ async function openVariantTab(page, log) {
       .isVisible()
       .catch(() => false);
     if (blocked) {
+      // Name the tab that is unhappy. "There are attribute errors" sends whoever
+      // reads it hunting across four tabs with sixty-odd fields.
+      const states = await F.readTabStates(page).catch(() => ({}));
+      const unhappy = Object.entries(states)
+        .filter(([, s]) => s.errors > 0 || (s.total && s.filled < s.total))
+        .map(([tab, s]) => `${tab} ${s.filled}/${s.total}${s.errors ? ` (${s.errors} error)` : ''}`);
+
+      // Photograph the tab that is erroring, tall enough to show the whole form. The
+      // counter says how many are wrong, never which — and the form scrolls inside a
+      // container, so an ordinary capture shows only its first two fields.
+      const erroring = Object.entries(states).find(([, s]) => s.errors > 0)?.[0];
+      if (erroring) {
+        await F.openTab(page, erroring);
+        await page.waitForTimeout(1000);
+        const size = page.viewportSize();
+        await page.setViewportSize({ width: 1500, height: 2600 }).catch(() => {});
+        await page.waitForTimeout(900);
+        const shot = `data/runs/${Date.now()}_blocked-${erroring.replace(/[^a-z]+/gi, '-')}.png`;
+        await page.screenshot({ path: shot, fullPage: true }).catch(() => {});
+        // The message itself, not only a picture of it: Flipkart truncates the text in
+        // the layout, so the screenshot shows "[Color]:Mandatory Attribute [color…".
+        const messages = await page
+          .evaluate(() => {
+            const out = [];
+            for (const el of document.querySelectorAll('div,span,p')) {
+              if (el.children.length) continue;
+              const t = (el.innerText || '').replace(/\s+/g, ' ').trim();
+              if (!t || t.length > 300) continue;
+              const red = /rgb\(2[0-5][0-9], ?[0-9]{1,2}, ?[0-9]{1,2}\)/.test(
+                getComputedStyle(el).color,
+              );
+              if (red || /mandatory|not allowed|invalid|cannot|required/i.test(t)) out.push(t);
+            }
+            return [...new Set(out)];
+          })
+          .catch(() => []);
+        if (size) await page.setViewportSize(size).catch(() => {});
+        log(`  the erroring tab is captured in ${shot}`);
+        if (messages.length) log(`  it says: ${messages.join(' | ')}`);
+      }
       throw new Error(
-        'Flipkart will not accept variants yet — the main listing still has attribute errors.',
+        'Flipkart will not accept variants yet — the main listing still has attribute errors.' +
+          (unhappy.length ? ` Tabs: ${unhappy.join(' · ')}` : ''),
       );
     }
     log(`  (Variant addition did not open, retry ${attempt}/3)`);
@@ -790,4 +838,18 @@ export async function sendToQc(page, log) {
   }
   log('✓ Sent for Quality Check.');
   return true;
+}
+
+/**
+ * Tab states read straight after filling, with the save bounce that makes them mean
+ * something.
+ *
+ * The counters are stale until a tab is left, so reading them in place reports a form
+ * that looks finished when it is not — and, as here, a form that looks broken when it
+ * is fine. Bouncing first is the difference between a measurement and a guess.
+ */
+export async function readTabStatesAfterFill(page) {
+  await F.openTab(page, F.TABS.images);
+  await F.openTab(page, F.TABS.price);
+  return F.readTabStates(page);
 }

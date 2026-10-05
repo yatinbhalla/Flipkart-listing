@@ -105,9 +105,34 @@ function vocabulary(path, v) {
       check: 'the space in front of your mandir',
     };
   }
+  // A hooded baby towel is filed under the same Bath Towels vertical as an adult
+  // towel, so the vertical cannot tell them apart — and the vertical here is a full
+  // category path, which matches none of the bare leaf names below. Identify it by
+  // what it is instead, or the fall-through calls a baby towel a table cover.
+  if (/baby|hooded|infant|newborn/i.test(`${path.name} ${path.productType}`)) {
+    return {
+      noun: 'hooded baby towel',
+      nouns: ['hooded baby towel', 'baby bath towel', 'baby towel', 'hooded towel'],
+      does: [
+        'wraps a baby straight out of the bath and keeps their head covered',
+        'dries a newborn quickly without rubbing at their skin',
+        'keeps a baby warm in the minutes between the bath and getting dressed',
+        'folds down small enough to keep one in the bag and one at home',
+      ],
+      where: ['bathroom', 'nursery', 'changing table', 'travel bag', 'grandparents house'],
+      detail: 'an embroidered animal hood',
+      mount: '',
+      check: 'the size you want for your baby',
+    };
+  }
   // Flipkart files hand towels under Bath Linen Set; the plainer names are kept so a
   // later towel path does not have to be filed under a "set" vertical to get the copy.
-  if (vertical === 'Bath Linen Set' || vertical === 'Hand Towel' || vertical === 'Towel Set') {
+  if (
+    vertical === 'Bath Towels' ||
+    vertical === 'Bath Linen Set' ||
+    vertical === 'Hand Towel' ||
+    vertical === 'Towel Set'
+  ) {
     return {
       noun: 'hand towel',
       // No noun here names the fabric: the banks cross material with noun already,

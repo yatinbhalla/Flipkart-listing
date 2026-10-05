@@ -200,13 +200,26 @@ async function openMenu(page, button, label) {
  * options globally, so a stale menu from the previous field gets searched instead
  * of the current one.
  */
-async function closeMenu(page) {
-  await page.keyboard.press('Escape').catch(() => {});
-  await settle(page, 250);
-  if (await page.locator(`${OPTION}:visible`).count()) {
-    // Escape is not always wired up — click a neutral spot instead.
-    await page.mouse.click(5, 5).catch(() => {});
+async function closeMenu(page, button) {
+  // Close it the way a person does: press the control again. Escape used to come
+  // first, and on a multi-select it CANCELS — the option was clicked, the field even
+  // showed it, and the value never reached the form, so Flipkart reported
+  // "Mandatory Attribute [color_for_refiner] is missing" about a Color that looked
+  // filled on screen. Escape is kept last, for menus that nothing else will shut.
+  if (button && (await page.locator(`${OPTION}:visible`).count())) {
+    await button.click().catch(() => {});
     await settle(page, 300);
+  }
+  if (await page.locator(`${OPTION}:visible`).count()) {
+    // A blank spot at the top of the form panel — outside the menu, and nowhere near
+    // the navigation, which a click at the window corner can hit.
+    const box = await page.locator(PANEL).first().boundingBox().catch(() => null);
+    if (box) await page.mouse.click(box.x + box.width - 14, box.y + 10).catch(() => {});
+    await settle(page, 300);
+  }
+  if (await page.locator(`${OPTION}:visible`).count()) {
+    await page.keyboard.press('Escape').catch(() => {});
+    await settle(page, 250);
   }
 }
 
@@ -317,7 +330,13 @@ export async function setPills(page, label, values, occurrence = 0) {
   const list = (Array.isArray(values) ? values : [values])
     .filter((v) => v !== undefined && v !== null)
     .map((v) => String(v).trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    // A comma COMMITS a pill in this widget — the field's own hint says so ("Press
+    // Enter or , after each value"). So a value containing one was always going to
+    // arrive as two pills, and the read-back then failed against the whole string,
+    // costing a run each time it slipped into the copy. Split it here so what we ask
+    // for is what the widget will do.
+    .flatMap((v) => (v.includes(',') ? v.split(',').map((p) => p.trim()).filter(Boolean) : [v]));
   if (!list.length) return;
 
   const row = await rowFor(page, label, occurrence);
@@ -424,9 +443,27 @@ export async function pickMulti(page, label, values, occurrence = 0) {
   if (!list.length) return;
 
   const row = await rowFor(page, label, occurrence);
-  await openMenu(page, row.locator(DROPDOWN).first(), label);
 
-  for (const value of list) {
+  // What the field ALREADY holds, read before anything is opened.
+  //
+  // Flipkart pre-selects values of its own from the product images — it had already
+  // chosen "Pink" for Color on a baby towel — and these options are toggles. Clicking
+  // a pre-selected one CLEARS it, so the field then reported itself empty
+  // ("Mandatory Attribute [color_for_refiner] is missing") while still showing the
+  // colour on screen. Reading the row is more reliable than inspecting each option:
+  // selected state is drawn differently per widget, but the summary beneath the
+  // control always lists what is in there, comma separated.
+  const summary = ((await row.innerText().catch(() => '')) || '')
+    .split(/[,\n]/)
+    .map((s) => s.replace(/\*/g, '').trim().toLowerCase())
+    .filter(Boolean);
+  const missing = list.filter((v) => !summary.includes(v.toLowerCase()));
+  if (!missing.length) return;
+
+  const control = row.locator(DROPDOWN).first();
+  await openMenu(page, control, label);
+
+  for (const value of missing) {
     const want = value.toLowerCase();
     const visible = page.locator(`${OPTION}:visible`);
     const count = await visible.count();
@@ -434,18 +471,39 @@ export async function pickMulti(page, label, values, occurrence = 0) {
     for (let i = 0; i < count; i++) {
       const el = visible.nth(i);
       const text = ((await el.innerText().catch(() => '')) || '').trim().toLowerCase();
-      if (text === want) { await el.click(); await settle(page, 350); hit = true; break; }
+      if (text !== want) continue;
+      // These options are TOGGLES. Clicking one that is already selected clears it,
+      // and the field then reports itself empty — which is how a Color that showed
+      // "1 Selected · Pink" on screen came back as "Mandatory Attribute
+      // [color_for_refiner] is missing". So select only what is not selected yet,
+      // and make a second call a no-op rather than an undo.
+      const already =
+        (await el.getAttribute('aria-selected').catch(() => null)) === 'true' ||
+        (await el
+          .locator('input[type="checkbox"]')
+          .first()
+          .isChecked()
+          .catch(() => false)) ||
+        /\bselected\b|Mui-selected/i.test((await el.getAttribute('class').catch(() => '')) || '');
+      if (already) {
+        hit = true;
+        break;
+      }
+      await el.click();
+      await settle(page, 350);
+      hit = true;
+      break;
     }
     if (!hit) {
       const seen = [];
       for (let i = 0; i < Math.min(count, 30); i++) {
         seen.push(((await visible.nth(i).innerText().catch(() => '')) || '').trim());
       }
-      await closeMenu(page);
+      await closeMenu(page, control);
       throw new Error(`Option "${value}" not found for "${label}". Available: ${seen.join(' / ')}`);
     }
   }
-  await closeMenu(page);
+  await closeMenu(page, control);
 }
 
 // ─── Tabs ──────────────────────────────────────────────────────────────────────

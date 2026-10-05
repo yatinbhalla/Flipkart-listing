@@ -401,6 +401,16 @@ router.post('/', async (req, res) => {
         throwIfStopped();
 
         await L.fillTabs(page, path, parent, log, { partner: storefront });
+        // Read the tabs here, before anything else touches the form. A tab that is
+        // clean now and erroring at the variant step is a different problem from one
+        // that never filled, and only this line tells the two apart.
+        {
+          const after = await L.readTabStatesAfterFill(page).catch(() => ({}));
+          const line = Object.entries(after)
+            .map(([tab, s]) => `${tab} ${s.filled}/${s.total}${s.errors ? ` e${s.errors}` : ''}`)
+            .join(' · ');
+          if (line) log(`  tabs after filling: ${line}`);
+        }
         throwIfStopped();
         // Slots 2–5 per variant: the path's reused set, with any per-variant file
         // (typically the slot-4 pack-size shot) swapped in.
