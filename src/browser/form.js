@@ -472,23 +472,14 @@ export async function pickMulti(page, label, values, occurrence = 0) {
       const el = visible.nth(i);
       const text = ((await el.innerText().catch(() => '')) || '').trim().toLowerCase();
       if (text !== want) continue;
-      // These options are TOGGLES. Clicking one that is already selected clears it,
-      // and the field then reports itself empty — which is how a Color that showed
-      // "1 Selected · Pink" on screen came back as "Mandatory Attribute
-      // [color_for_refiner] is missing". So select only what is not selected yet,
-      // and make a second call a no-op rather than an undo.
-      const already =
-        (await el.getAttribute('aria-selected').catch(() => null)) === 'true' ||
-        (await el
-          .locator('input[type="checkbox"]')
-          .first()
-          .isChecked()
-          .catch(() => false)) ||
-        /\bselected\b|Mui-selected/i.test((await el.getAttribute('class').catch(() => '')) || '');
-      if (already) {
-        hit = true;
-        break;
-      }
+      // No per-option "is it already selected?" test here. One was tried, and
+      // `isChecked()` on an option that holds no checkbox does not return false — it
+      // AUTO-WAITS for a checkbox to appear and only gives up at the default timeout,
+      // so the first plain option in every list cost about thirty seconds. Four
+      // multi-picks turned a Product Description tab into three minutes. What a
+      // toggle actually needs is to not be clicked twice, and the `missing` filter
+      // above already guarantees that, from the field's own summary — one read for
+      // the whole field instead of three round trips per option.
       await el.click();
       await settle(page, 350);
       hit = true;

@@ -82,6 +82,10 @@ export async function fillTab(page, tabName, fields, data, log) {
     }
 
     const at = field.at || 0;
+    // Time each field. A tab that takes three minutes says nothing about WHICH field
+    // took it, and the obvious suspects have twice turned out innocent — so report any
+    // field slow enough to matter and stay quiet about the rest.
+    const started = Date.now();
     switch (field.type) {
       case 'dropdown':
         await F.pick(page, field.label, final, at);
@@ -99,6 +103,8 @@ export async function fillTab(page, tabName, fields, data, log) {
         await F.setText(page, field.label, final, at);
         break;
     }
+    const took = Date.now() - started;
+    if (took > 4000) log(`  ⏱ ${field.label} took ${(took / 1000).toFixed(1)}s`);
   }
 }
 

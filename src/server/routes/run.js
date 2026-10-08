@@ -196,6 +196,23 @@ router.post('/', async (req, res) => {
   const unknown = storefronts.find((p) => !known.includes(p));
   if (unknown) return res.status(400).json({ error: `Unknown storefront "${unknown}".` });
 
+  // A path may declare the storefronts it belongs on. Some structures simply do not
+  // exist everywhere: the baby towel variation varies by Brand Color, and Shopsy's
+  // Bath Towel vertical offers only Pack of and Size as axes — so a Shopsy run filled
+  // three tabs over four minutes and then failed at the variant step, every time.
+  // Refusing here says so in a second instead.
+  const allowed = Array.isArray(path.storefronts) && path.storefronts.length ? path.storefronts : null;
+  if (allowed) {
+    const refused = storefronts.find((p) => !allowed.includes(p));
+    if (refused) {
+      return res.status(400).json({
+        error:
+          `"${path.name}" is not listed on ${refused}. It is set up for ${allowed.join(' and ')}.` +
+          (refused === 'shopsy' ? ' Shopsy has no Brand Color variant axis on this vertical.' : ''),
+      });
+    }
+  }
+
   // Meesho is checked BEFORE anything is listed anywhere. Finding out at the
   // handover means a Flipkart batch has already gone out and the run then fails.
   if (storefronts.includes('meesho')) {
@@ -401,16 +418,6 @@ router.post('/', async (req, res) => {
         throwIfStopped();
 
         await L.fillTabs(page, path, parent, log, { partner: storefront });
-        // Read the tabs here, before anything else touches the form. A tab that is
-        // clean now and erroring at the variant step is a different problem from one
-        // that never filled, and only this line tells the two apart.
-        {
-          const after = await L.readTabStatesAfterFill(page).catch(() => ({}));
-          const line = Object.entries(after)
-            .map(([tab, s]) => `${tab} ${s.filled}/${s.total}${s.errors ? ` e${s.errors}` : ''}`)
-            .join(' · ');
-          if (line) log(`  tabs after filling: ${line}`);
-        }
         throwIfStopped();
         // Slots 2–5 per variant: the path's reused set, with any per-variant file
         // (typically the slot-4 pack-size shot) swapped in.

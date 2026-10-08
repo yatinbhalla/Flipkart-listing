@@ -258,7 +258,12 @@ export async function createListing(page, { path: cfg, variant, sku, images, sub
       !(await cont.isDisabled().catch(() => true))
     ) {
       await cont.click().catch(() => {});
-      if (await appears(page, '#supplier_gst_percent', 8000)) break;
+      // Give the form a real chance before pressing again. Meesho takes about eight
+      // seconds to render it, so an eight-second wait sat exactly on the edge: when it
+      // ran out a fraction early the loop pressed Continue a second time and waited
+      // the whole eight again, turning one slow step into two. Waiting longer costs
+      // nothing when the form is quick — this returns the moment it appears.
+      if (await appears(page, '#supplier_gst_percent', 20000)) break;
     }
     await page.waitForTimeout(250);
   }
@@ -457,12 +462,15 @@ async function proceedEnabled(page) {
  */
 async function tickDeclaration(page, log) {
   const WANT = 'I understand that all products';
-  // Let it render: the declaration appears with the warning modal, and deciding on
-  // the first pass reports "absent" about a box that is about to exist.
+  // A short look, not a long one. The declaration appears with the warning modal, so
+  // deciding on the very first pass would report "absent" about a box about to exist —
+  // but most catalogues never show one, and a four-second wait was then spent doing
+  // nothing on every submission. The caller loops, so a box that is slow to arrive is
+  // still caught on the next pass.
   await page
     .getByText(WANT, { exact: false })
     .first()
-    .waitFor({ state: 'visible', timeout: 4000 })
+    .waitFor({ state: 'visible', timeout: 1500 })
     .catch(() => {});
 
   // Tag the control browser-side, then let Playwright deliver a real pointer click.
