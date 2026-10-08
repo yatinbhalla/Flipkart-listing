@@ -366,13 +366,24 @@ export async function setCellPickMulti(page, rowIdx, name, values, occurrence = 
   if (!list.length) return;
 
   const td = await cell(page, rowIdx, name, occurrence);
+
+  // What the cell already holds. These options are toggles, exactly as on the main
+  // form: clicking a value that is already selected CLEARS it, and the column then
+  // reports itself empty. Read first, click only what is missing.
+  const held = ((await td.innerText().catch(() => '')) || '')
+    .split(/[,\n]/)
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  const missing = list.filter((v) => !held.includes(v.toLowerCase()));
+  if (!missing.length) return;
+
   await openCellMenu(page, td, name);
 
-  for (const value of list) {
+  for (const value of missing) {
     const idx = await findOption(page, value.toLowerCase(), value);
     if (idx === -1) {
       const labels = await optionLabels(page);
-      await page.keyboard.press('Escape').catch(() => {});
+      await closeCellMenu(page, td);
       throw new Error(
         `Variant option "${value}" not found for column "${name}". ` +
           `Available: ${labels.slice(0, 30).join(' / ')}`,
@@ -381,8 +392,25 @@ export async function setCellPickMulti(page, rowIdx, name, values, occurrence = 
     await page.locator(`${OPTION}:visible`).nth(idx).click();
     await settle(page, 350);
   }
-  await page.keyboard.press('Escape').catch(() => {});
-  await settle(page, 300);
+  await closeCellMenu(page, td);
+}
+
+/**
+ * Shut a cell's option list without cancelling it.
+ *
+ * Escape is a cancel on these menus, which discards what was just clicked — the same
+ * trap as the main form. Press the cell again instead, and keep Escape as the last
+ * resort for a menu nothing else will close.
+ */
+async function closeCellMenu(page, td) {
+  if (await page.locator(`${OPTION}:visible`).count()) {
+    await td.click().catch(() => {});
+    await settle(page, 300);
+  }
+  if (await page.locator(`${OPTION}:visible`).count()) {
+    await page.keyboard.press('Escape').catch(() => {});
+    await settle(page, 300);
+  }
 }
 
 /** Multi-value columns use the same pill widget as the main form. */
@@ -725,4 +753,31 @@ export async function readRow(page, rowIdx) {
     },
     { rowIdx, PILL },
   );
+}
+
+/**
+ * Where each variant actually sits in the matrix, keyed by its axis value.
+ *
+ * Flipkart does NOT list the rows in the order the variants were created. A run that
+ * created Pink, Light Blue, Beige, Mix of 2, Mix of 3 came back as Pink, Mix of 2,
+ * Light Blue, Beige, Mix of 3 — and filling by position then wrote every row's SKU,
+ * price and keywords against the wrong colour, which is invisible until the listing
+ * is live. Read the axis column and address rows by what they say they are.
+ */
+export async function rowsByAxisValue(page, axisName) {
+  const col = await colIndex(page, axisName);
+  const values = await page.evaluate(
+    ({ col }) =>
+      [...document.querySelectorAll('table tbody tr')].map((tr) =>
+        (tr.children[col]?.innerText || '').replace(/\s+/g, ' ').trim(),
+      ),
+    { col },
+  );
+  const map = new Map();
+  values.forEach((text, idx) => {
+    const key = text.toLowerCase();
+    // First wins: a value that somehow appears twice should not silently retarget.
+    if (key && !map.has(key)) map.set(key, idx);
+  });
+  return map;
 }

@@ -647,11 +647,25 @@ export async function fillVariants(
   // is filled against a full-width table.
   if (await V.collapseErrorSidebar(page)) log('  · collapsed the Variant Issues sidebar');
 
+  // Where each variant actually landed. Flipkart reorders the rows, so filling by
+  // position writes one variant's SKU, price and copy against another's photo.
+  const axisName = variants.slice(1).find((v) => v.axis)?.axis;
+  const byValue = axisName ? await V.rowsByAxisValue(page, axisName).catch(() => new Map()) : new Map();
+  const rowFor = (v, fallback) => {
+    const hit = v.axisValue ? byValue.get(String(v.axisValue).toLowerCase()) : undefined;
+    return hit === undefined ? fallback : hit;
+  };
+
   for (let i = 1; i < variants.length; i++) {
     const v = variants[i];
-    log(`Filling variant row ${i} (${v.label})…`);
-    if (columns) await fillVariantRowFromMap(page, i, v, columns, log);
-    else await fillVariantRow(page, i, v);
+    const row = rowFor(v, i);
+    if (row !== i) log(`  (${v.axisValue} is row ${row}, not ${i} — Flipkart reordered them)`);
+    else if (axisName && !byValue.has(String(v.axisValue).toLowerCase())) {
+      log(`  ⚠ "${v.axisValue}" was not found in the ${axisName} column — filling row ${i} by position.`);
+    }
+    log(`Filling variant row ${row} (${v.label})…`);
+    if (columns) await fillVariantRowFromMap(page, row, v, columns, log);
+    else await fillVariantRow(page, row, v);
   }
 
   // Save, then re-read. On the first pass Procurement SLA, Stock and the package
@@ -660,10 +674,17 @@ export async function fillVariants(
   await saveVariantTab(page);
   await F.scrollSection(page, 'bottom');
 
+  // Re-read the mapping: saving can reorder the rows again.
+  const afterSave = axisName
+    ? await V.rowsByAxisValue(page, axisName).catch(() => new Map())
+    : new Map();
   for (let i = 1; i < variants.length; i++) {
-    const missing = await repairVariantRow(page, i, variants[i]);
+    const v = variants[i];
+    const hit = v.axisValue ? afterSave.get(String(v.axisValue).toLowerCase()) : undefined;
+    const row = hit === undefined ? rowFor(v, i) : hit;
+    const missing = await repairVariantRow(page, row, v);
     if (missing.length) {
-      log(`  ↻ Re-entered dropped fields on row ${i}: ${missing.join(', ')}`);
+      log(`  ↻ Re-entered dropped fields on row ${row} (${v.axisValue || v.label}): ${missing.join(', ')}`);
     }
   }
 }

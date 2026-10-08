@@ -26,9 +26,23 @@ const SHOPSY_VERTICAL = {
 };
 
 /** What the vertical is called on `partner`. */
+/**
+ * Look a vertical up by its leaf.
+ *
+ * A path may carry the full category path Flipkart shows — "Baby Care / Bath Care,
+ * Diapering & Potty / Bath Towels" — while these tables are keyed on the vertical
+ * name alone. Keying on the whole string meant every Shopsy run on such a path threw
+ * after the images were already uploaded.
+ */
+function byLeaf(table, vertical) {
+  if (table[vertical]) return table[vertical];
+  const leaf = String(vertical || '').split('/').pop().trim();
+  return table[leaf];
+}
+
 export function verticalFor(vertical, partner) {
   if (String(partner).toLowerCase() !== 'shopsy') return vertical;
-  const name = SHOPSY_VERTICAL[vertical];
+  const name = byLeaf(SHOPSY_VERTICAL, vertical);
   if (!name) throw new Error(`No Shopsy vertical is known for "${vertical}".`);
   return name;
 }
@@ -108,7 +122,7 @@ const SHOPSY_FIELDS = {
  */
 export function adaptFields(fields, vertical, partner) {
   if (String(partner).toLowerCase() !== 'shopsy') return fields;
-  const rules = SHOPSY_FIELDS[vertical];
+  const rules = byLeaf(SHOPSY_FIELDS, vertical);
   if (!rules) throw new Error(`No Shopsy field rules are known for "${vertical}".`);
 
   return (fields || [])
@@ -140,7 +154,7 @@ export function adaptFields(fields, vertical, partner) {
  */
 export function adaptFieldMap(fieldMap, vertical, partner) {
   if (!fieldMap || String(partner).toLowerCase() !== 'shopsy') return fieldMap;
-  const rules = SHOPSY_FIELDS[vertical];
+  const rules = byLeaf(SHOPSY_FIELDS, vertical);
   if (!rules) throw new Error(`No Shopsy field rules are known for "${vertical}".`);
 
   const out = Object.fromEntries(
