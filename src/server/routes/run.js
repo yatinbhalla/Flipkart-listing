@@ -20,7 +20,7 @@ import {
 import { getSession } from '../../browser/session.js';
 import * as L from '../../browser/listing.js';
 import { MAX_BATCH, variantNeedsImage } from '../constants.js';
-import { describeListing, listingSkus } from '../format.js';
+import { describeListing, listingSkus, fitModelName } from '../format.js';
 import { PARTNERS, verticalFor } from '../partners.js';
 import { runMeeshoBatch, meeshoBlocker } from './meesho.js';
 
@@ -93,7 +93,9 @@ async function buildListing(path, index = 0) {
     // baked-in one would be identical across every listing on the path — and it must
     // come after the copy is merged, since the copy carries its own modelName.
     if (path.appendSkuToModelName && v.modelName && !v.modelName.includes(v.sku)) {
-      v.modelName = `${v.modelName} ${v.sku}`;
+      v.modelName = fitModelName(v.modelName, ` ${v.sku}`);
+    } else if (v.modelName) {
+      v.modelName = fitModelName(v.modelName);
     }
 
     out.push(v);

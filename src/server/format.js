@@ -6,6 +6,30 @@
  * mispriced listing is expensive to notice late.
  */
 
+/**
+ * Model Name must stay under 80 characters, SKU suffix included. Titles come back
+ * from the copy writer as long as 127 once ` BM_WT/12345` is appended.
+ */
+export const MODEL_NAME_MAX = 79;
+
+// A title cut mid-phrase should not end on a word that promises more.
+const DANGLING = new Set(['and', 'with', 'for', 'of', 'in', 'to', 'the', 'a', '&', '-', '|', ',', 'or']);
+
+/**
+ * Fit `title` + `suffix` within `max` by dropping whole words from the end of the
+ * title — never from the suffix, which carries the SKU.
+ */
+export function fitModelName(title, suffix = '', max = MODEL_NAME_MAX) {
+  const words = String(title ?? '').trim().split(/\s+/).filter(Boolean);
+  const room = max - suffix.length;
+  const before = words.length;
+  while (words.length > 1 && words.join(' ').length > room) words.pop();
+  if (words.length < before) {
+    while (words.length > 1 && DANGLING.has(words.at(-1).toLowerCase())) words.pop();
+  }
+  return (words.join(' ').slice(0, Math.max(room, 0)) + suffix).trim();
+}
+
 /** `₹1,299` — grouped the Indian way. Null when there is no usable number. */
 export function money(amount) {
   const n = Number(amount);

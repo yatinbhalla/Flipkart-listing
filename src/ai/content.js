@@ -16,6 +16,7 @@
  */
 
 import { callGeminiJSON } from './client.js';
+import { MODEL_NAME_MAX, fitModelName } from '../server/format.js';
 
 const BANNED_HINTS = ['flipkart', 'amazon', 'meesho', 'myntra', 'ajio'];
 const INCH_TO_CM = 2.54;
@@ -136,6 +137,12 @@ export async function generateCopyPool(path, variant, count, log) {
 export async function generateCopy(path, variant, log, options = {}) {
   const size = `${variant.sizeInches.width}x${variant.sizeInches.length} inch`;
   const specs = buildSpecs(variant);
+  // The run appends ` <SKU>` to Model Name on some paths, and the whole line has to
+  // stay under 80 — so the title gets only what the SKU leaves.
+  const skuRoom = path.appendSkuToModelName
+    ? ` ${(variant.skuPattern || path.skuPattern || '').replace('{X}', '00000')}`
+    : '';
+  const titleMax = MODEL_NAME_MAX - skuRoom.length;
 
   const prompt = `You are writing an Indian e-commerce product listing.
 
@@ -170,7 +177,8 @@ ${options.avoid?.length ? `8. These phrases are already used by other versions; 
    ${options.avoid.join(', ')}` : ''}
 ${options.usedTitles?.length ? `9. These titles are already taken by other versions of this product. Yours must
    differ from every one of them — reorder the attributes, lead with a different
-   one, or name a different detail:
+   one, or name a different detail. Never make a title unique by numbering it —
+   no "Version", "Edition", "Set 7" or counting words:
    ${options.usedTitles.map((t) => `- ${t}`).join('\n   ')}` : ''}
 
 Return JSON exactly:
@@ -178,7 +186,7 @@ Return JSON exactly:
   "description": "body text with line breaks, no specification list",
   "searchKeywords": ["10 short lowercase search phrases, no overlap between them"],
   "keyFeatures": ["6 to 8 short feature phrases, title case"],
-  "modelName": "one keyword-rich title-style line naming the size and key attributes"
+  "modelName": "one keyword-rich title-style line naming the size and key attributes, at most ${titleMax} characters"
 }`;
 
   log(
@@ -251,7 +259,7 @@ Return JSON exactly:
     description: (body + renderSpecs(specs)).slice(0, 4500),
     searchKeywords,
     keyFeatures: (out.keyFeatures || []).map(scrub).filter(Boolean).slice(0, 8),
-    modelName: scrub(out.modelName),
+    modelName: fitModelName(scrub(out.modelName), '', titleMax),
     generatedAt: new Date().toISOString(),
   };
 

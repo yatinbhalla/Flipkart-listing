@@ -367,8 +367,13 @@ export async function setPills(page, label, values, occurrence = 0) {
         .catch(() => false);
     }
 
-    // Last resort before failing the listing: let Gemini look at the page.
-    if (!ready) {
+    // Last resort before failing the listing: let Gemini look at the page. Only for
+    // an EMPTY field — that is the one case that would fail the listing. A field that
+    // already holds pills and has lost its input is almost always full (Search
+    // Keywords, Key Features), which no click can undo; asking Gemini there cost a
+    // call per full field on every listing and never helped. The capacity report
+    // below handles it.
+    if (!ready && (await row.locator(PILL).count().catch(() => 0)) === 0) {
       const helped = await aiRecovery({
         page,
         scope: rowScope,
