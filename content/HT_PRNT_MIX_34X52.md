@@ -4,7 +4,8 @@ Reusable by the listing app. **No brand names anywhere** (no seller brand, no ma
 — Flipkart QC rejects brand mentions inside description/keyword fields.
 
 - SKU pattern: `HT_PRNT_MIX/{X}`
-- Vertical: `Bath Linen Set` (Home Furnishing / Bathing Accessories / Bath Linen Set)
+- Vertical: `Bath Towels` (Health & Beauty / Bath and Spa / Bath Towels)
+- Shopsy vertical: `Shopsy / Bathing Accessories / Shopsy Bath Towel`
 - Source images: `F:\Flipkart\HT_PRNT_MIX\{1..4} (8).png` plus the shared `img5.png`
 
 The pack is **assorted**: four towels, each a different multicolour floral print on the same
@@ -154,33 +155,46 @@ not be cut out of their background.
 
 ## Open questions for the seller
 
-Prices, weight and both categories are settled and in the config. All three field maps
-were discovered live on 2026-10-01 and saved to `content/BATH_LINEN_SET_SCHEMA.json`,
-`content/SHOPSY_BATH_LINEN_SET_SCHEMA.json` and
-`content/MEESHO_HAND_FACE_TOWELS_SCHEMA.json`. What is left:
-
-1. **The HSN does not match across marketplaces.** Flipkart and Shopsy carry `611120` as
+1. **The Weight (g) field carries 150, which is the pack weight.** Flipkart reads that
+   row as the item's weight, where 200 GSM over 0.1768 m² puts one towel at about 35 g.
+   The two figures corroborate each other — 200 GSM implies 141 g for a pack of four
+   against the stated 150 g — but the row should say whichever one Flipkart means.
+2. **The HSN does not match across marketplaces.** Flipkart and Shopsy carry `611120` as
    supplied — their HSN is a free-text field. Meesho's Hand & Face Towels category offers
    only `630492`, `630260` and `520811`, so the `meesho` block uses **`630260`**. One
-   product should not be filed under two codes: decide which is right and make both
-   match. `611120` is a knitted babies'-garments code; towels normally sit under 6302.
-2. **GSM** is left blank on a field that exists on this vertical — fill it if the mill
-   states one. It is also what the "Highly Absorbent" and "Quick Dry" claims on image 3
-   would need to stand on.
+   product should not be filed under two codes. `611120` is a knitted babies'-garments
+   code; towels normally sit under 6302.
 3. **Meesho product dimensions go in as `20.5 x 13.5 Inch`**, not centimetres, because
    `createListing` hardcodes `product_unit` to Inch. The category does offer `cm`; using
    it needs a code change, not a config one.
 
 ## What the verticals turned out to need
 
-Bath Linen Set is a **set** vertical: it carries separate Bath / Hand / Face towel
-dimension fields, of which only the Hand pair is filled, and a mandatory **Bath Robe
-Size** that is answered `NA`. It has no Type, Reversible, Character or Thread Count
-attribute, so those came off the path.
+**Bath Towels** (discovered on both storefronts 2026-10-03, saved as
+`content/BATH_TOWELS_SCHEMA.json` and `content/SHOPSY_BATH_TOWELS_SCHEMA.json`) fits the
+product far better than Bath Linen Set did — it has a mandatory **Towel Type** that
+offers `Hand`, where the old vertical had a mandatory *Bath Robe Size* answered `NA`.
 
-Shopsy is the same form field for field, with one rename (`Items Included` becomes
-`Sales Package`) and one option missing from Procurement type (`domestic procurement`,
-which no path uses). The vertical is **not** prefixed with "Shopsy".
+It is also a stricter form: 31 mandatory fields against 21, and every one of the 15
+Product Description attributes is mandatory — including **GSM**, which the seller gave as
+`200` on 2026-10-03. Shopsy demotes GSM to optional; Flipkart cannot be listed without it. Three values had to change because the old
+ones are not on this vertical's lists:
 
-Meesho's Bathroom Linen has no pattern, fabric, size, weight or weight-unit field at all,
-and makes `type` and `ideal_for` mandatory where the other categories do not.
+| Attribute | Was | Now | Why |
+|---|---|---|---|
+| Type | `Hand Towel` | `Towel Set` | The dropdown offers only Gamcha, Gamcha Set, Towel, Towel Set |
+| Ideal For | — | `Women & Men` | Mandatory here; the list has no "Unisex" |
+| Towel Type | — | `Hand` | Mandatory, and the reason this vertical is the right one |
+
+`Size` is `Free`, `Pack of` became a dropdown (`4`), and `Width`/`Length` are the product
+in **inches** (13.5 x 20.5), not the centimetres the old vertical wanted. Bath Robe Size
+is gone.
+
+**Shopsy** calls it `Shopsy Bath Towel` — prefixed *and* singular. It renames Items
+Included to Sales Package, as on every other vertical, and demotes four mandatory
+Product Description attributes (Design, GSM, Length, Width) to optional ones on
+Additional Description. Its Material list drops Aloe Vera and Banana Fiber; Cotton is on
+both, so nothing needed substituting.
+
+**Meesho is unaffected** — it has its own category tree, and the Hand & Face Towels
+mapping is unchanged.

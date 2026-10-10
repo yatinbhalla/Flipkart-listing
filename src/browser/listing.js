@@ -172,23 +172,36 @@ export async function selectVertical(page, verticalLabel, log, { partner = 'flip
        * it is read. So the name goes in as real keystrokes, and if nothing appears
        * the field is clicked to re-open the list it already has results for.
        */
+      /**
+       * Terms to type, in order of preference.
+       *
+       * The unprefixed name first: it matches under either naming, where "Shopsy Table
+       * Cover" returns nothing once the prefix is dropped. Then the same name with its
+       * plural flipped, because the typeahead does not always find a vertical by the
+       * name it then displays — Shopsy lists "Shopsy Bath Towel" but offers nothing at
+       * all for "Bath Towel", while "Bath Towels" returns it. Matching is unchanged and
+       * still happens against the stored path, so a looser SEARCH cannot select a looser
+       * result.
+       */
+      const terms = [...new Set([bare, /s$/i.test(bare) ? bare.replace(/s$/i, '') : `${bare}s`])];
+
       const openSuggestions = async () => {
         for (let attempt = 1; attempt <= 3; attempt++) {
-          await search.click({ timeout: 10000 }).catch(() => {});
-          await search.fill('').catch(() => {});
-          await page.waitForTimeout(300);
-          // Search on the unprefixed name: it matches under either naming, where
-          // "Shopsy Table Cover" returns nothing once the prefix is dropped.
-          await search.pressSequentially(bare, { delay: 60 }).catch(() => {});
-          await page.waitForTimeout(2000);
-          if (await rows.count()) return true;
+          for (const term of terms) {
+            await search.click({ timeout: 10000 }).catch(() => {});
+            await search.fill('').catch(() => {});
+            await page.waitForTimeout(300);
+            await search.pressSequentially(term, { delay: 60 }).catch(() => {});
+            await page.waitForTimeout(2000);
+            if (await rows.count()) return true;
 
-          // The seller's observation: clicking the box brings back a list that has
-          // closed without needing the text retyped.
-          await search.click({ timeout: 10000 }).catch(() => {});
-          await page.waitForTimeout(1500);
-          if (await rows.count()) return true;
-          log(`Suggestions did not open for "${bare}" (attempt ${attempt}/3).`);
+            // The seller's observation: clicking the box brings back a list that has
+            // closed without needing the text retyped.
+            await search.click({ timeout: 10000 }).catch(() => {});
+            await page.waitForTimeout(1500);
+            if (await rows.count()) return true;
+          }
+          log(`Suggestions did not open for ${terms.map((t) => `"${t}"`).join(' or ')} (attempt ${attempt}/3).`);
         }
         return false;
       };
@@ -650,9 +663,12 @@ export async function fillVariants(
   // Where each variant actually landed. Flipkart reorders the rows, so filling by
   // position writes one variant's SKU, price and copy against another's photo.
   const axisName = variants.slice(1).find((v) => v.axis)?.axis;
-  const byValue = axisName ? await V.rowsByAxisValue(page, axisName).catch(() => new Map()) : new Map();
+  const byValue = axisName ? await V.rowsByAxisValue(page, axisName).catch(() => null) : null;
+  if (axisName && !byValue) {
+    log(`  ⚠ The "${axisName}" column could not be read — rows will be filled by position.`);
+  }
   const rowFor = (v, fallback) => {
-    const hit = v.axisValue ? byValue.get(String(v.axisValue).toLowerCase()) : undefined;
+    const hit = byValue && v.axisValue ? byValue.find(v.axisValue) : undefined;
     return hit === undefined ? fallback : hit;
   };
 
@@ -660,7 +676,7 @@ export async function fillVariants(
     const v = variants[i];
     const row = rowFor(v, i);
     if (row !== i) log(`  (${v.axisValue} is row ${row}, not ${i} — Flipkart reordered them)`);
-    else if (axisName && !byValue.has(String(v.axisValue).toLowerCase())) {
+    else if (byValue && v.axisValue && byValue.find(v.axisValue) === undefined) {
       log(`  ⚠ "${v.axisValue}" was not found in the ${axisName} column — filling row ${i} by position.`);
     }
     log(`Filling variant row ${row} (${v.label})…`);
@@ -675,12 +691,10 @@ export async function fillVariants(
   await F.scrollSection(page, 'bottom');
 
   // Re-read the mapping: saving can reorder the rows again.
-  const afterSave = axisName
-    ? await V.rowsByAxisValue(page, axisName).catch(() => new Map())
-    : new Map();
+  const afterSave = axisName ? await V.rowsByAxisValue(page, axisName).catch(() => null) : null;
   for (let i = 1; i < variants.length; i++) {
     const v = variants[i];
-    const hit = v.axisValue ? afterSave.get(String(v.axisValue).toLowerCase()) : undefined;
+    const hit = afterSave && v.axisValue ? afterSave.find(v.axisValue) : undefined;
     const row = hit === undefined ? rowFor(v, i) : hit;
     const missing = await repairVariantRow(page, row, v);
     if (missing.length) {

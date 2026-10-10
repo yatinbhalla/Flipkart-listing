@@ -35,6 +35,19 @@ const ID_CANDIDATES = {
   colour: ['#color', '#primary_color'],
 };
 
+/**
+ * The dimension values to try, exact first. Baby Blanket's "Length Size* (INCH)" and
+ * "Width Size* (INCH)" are dropdowns of whole inches only, so the 85 cm dohar's
+ * 33.5 is not an option and the pick failed outright. The nearest whole inch is
+ * the fallback; a category whose list does carry the half inch still gets it.
+ */
+export function inchOptions(value) {
+  const exact = String(value ?? '').trim();
+  const n = Number(exact);
+  if (!exact || !Number.isFinite(n) || Number.isInteger(n)) return exact;
+  return [exact, String(Math.round(n))];
+}
+
 /** Meesho rejects a description over this, and the stored copy targets Flipkart's 5000. */
 export const DESCRIPTION_CAP = 1400;
 
@@ -202,7 +215,11 @@ export async function createListing(page, { path: cfg, variant, sku, images, sub
   const M = cfg.meesho;
   if (!M) throw new Error(`"${cfg.name}" has no meesho block — nothing to list with.`);
   const f = createFiller(page, log);
-  const description = meeshoDescription(variant.copy);
+  // The copy this listing drew from the pool is merged onto the variant itself;
+  // `variant.copy` is always version 1, so reading it gave every Meesho catalogue in
+  // a batch the same name and description.
+  const copy = variant.description ? variant : variant.copy;
+  const description = meeshoDescription(copy);
   // Phase timings: the seller can see which step is slow instead of us guessing.
   let mark = Date.now();
   const phase = (name) => {
@@ -277,7 +294,7 @@ export async function createListing(page, { path: cfg, variant, sku, images, sub
   await f.pick('#hsn_code', M.hsn, 'HSN');
   await f.type('#product_weight_in_gms', variant.weightGrams, 'net weight (gms)');
   await f.type('#supplier_product_id', sku, 'style code / product id');
-  await f.type('#product_name', variant.copy.modelName, 'product name');
+  await f.type('#product_name', copy.modelName, 'product name');
 
   // The price row does not exist until a size is chosen, and the size options are
   // DRAWN checkboxes: there is no input[type=checkbox] on the page and clicking the
@@ -349,8 +366,11 @@ export async function createListing(page, { path: cfg, variant, sku, images, sub
   if (M.features) await f.pick('#features', M.features, 'features');
   if (M.secondaryColor) await f.pick('#secondary_color', M.secondaryColor, 'secondary colour');
   if (M.includedComponents) await f.type('#included_components', M.includedComponents, 'included components');
-  await f.byCandidates(ID_CANDIDATES.length, variant.sizeInches.length, 'product length');
-  await f.byCandidates(ID_CANDIDATES.breadth, variant.sizeInches.width, 'product breadth');
+  // A path can state its Meesho size outright. The 85 cm dohar is 33.5 inch, which
+  // Baby Blanket's whole-inch list does not carry, and trying 33.5 before falling back
+  // left the size row empty on some listings of a batch — so those paths say 34.
+  await f.byCandidates(ID_CANDIDATES.length, M.lengthInches ?? inchOptions(variant.sizeInches.length), 'product length');
+  await f.byCandidates(ID_CANDIDATES.breadth, M.widthInches ?? inchOptions(variant.sizeInches.width), 'product breadth');
   await f.pick('#product_height', ['0', '0.5'], 'product height');
   await f.pick('#product_unit', 'Inch', 'product unit');
 

@@ -74,7 +74,7 @@ values in a `meesho` block in its own config (kept local with the rest of
 | `included_components` | — | — | cotton |
 | `multipack` | 1 | — | 1 / 2 / 4 (the pack size) |
 | `product_unit` / `weight_unit` | Inch / g | — | Inch / g |
-| `hsn_code` | 392410 PVC / 630492 net | 911120 | 630492 |
+| `hsn_code` | 392410 PVC / 630492 net | 611120 | 630492 |
 | `color` | as the path already states | White | remapped, see below |
 
 Two vocabulary gaps the seller settled:
@@ -103,7 +103,14 @@ colour, but four distinct prints all land on Multicolor, so those nine listings
 are colour-identical on Meesho.
 
 All three HSN codes the paths already use are offered by their Meesho category, so
-they carry over unchanged.
+they carry over unchanged — except the dohars. Their Flipkart HSN became 911120,
+which Baby Blanket does not offer (searching `9111` finds nothing; read off the live
+form 2026-10-10). The seller moved every dohar to **611120** on both marketplaces, so
+Flipkart `hsn` and `meesho.hsn` match again.
+
+Baby Blanket's dimensions are **Length Size\* (INCH)** and **Width Size\* (INCH)** in
+the size row — dropdowns of whole inches only. The 85 cm dohar's 33.5 is not an
+option, so the driver tries the exact value and falls back to the nearest inch (34).
 
 **Wall Decor & Hangings does not describe these products.** `type` is mandatory and
 offers only Festive Toran, God related, Horses, Peacock style, Religious and

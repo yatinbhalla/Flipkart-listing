@@ -23,6 +23,9 @@ const SHOPSY_VERTICAL = {
   // Not prefixed. Verified by discovering the vertical on the Shopsy catalogue under
   // this exact name on 2026-10-01 — "Shopsy Bath Linen Set" does not exist.
   'Bath Linen Set': 'Bath Linen Set',
+  // Prefixed AND singular, under Shopsy / Bathing Accessories. Read off the live
+  // typeahead on 2026-10-03.
+  'Bath Towels': 'Shopsy / Bathing Accessories / Shopsy Bath Towel',
 };
 
 /** What the vertical is called on `partner`. */
@@ -64,6 +67,14 @@ export function verticalFor(vertical, partner) {
  *   left on its Flipkart tab is hunted for on a page that does not have it. These
  *   all move from mandatory on Product Description to optional on Additional
  *   Description, so they are marked optional as they go.
+ *
+ *   A move is written `{ from, to }` and applies ONLY to the field on the `from` tab.
+ *   The bare `'<tab>'` form moves every field of that label and is kept for rules that
+ *   predate this, but it is a trap worth knowing about: labels are not unique across
+ *   tabs. "Height" is the package height on Price, Stock and Shipping AND the product
+ *   height on Product Description, so an unqualified Height rule drags the package
+ *   dimension off the price tab, leaves a mandatory field empty, and types the packet's
+ *   height into the product's. Qualify every new rule.
  */
 const SHOPSY_FIELDS = {
   'Table Cover': {
@@ -84,10 +95,13 @@ const SHOPSY_FIELDS = {
     // for it, not a guess.
     substitute: { 'Ideal Usage': { 'All Season': 'AC Room' } },
     move: {
-      Width: 'Additional Description',
-      Height: 'Additional Description',
-      'Ideal Usage': 'Additional Description',
-      Organic: 'Additional Description',
+      Width: { from: 'Product Description', to: 'Additional Description' },
+      // Qualified deliberately: "Height" is also the package height on Price, Stock and
+      // Shipping, and the unqualified rule moved that one too — leaving a mandatory
+      // price-tab field empty and typing the packet's height into the product's.
+      Height: { from: 'Product Description', to: 'Additional Description' },
+      'Ideal Usage': { from: 'Product Description', to: 'Additional Description' },
+      Organic: { from: 'Product Description', to: 'Additional Description' },
     },
   },
   'Hanging Organizers': {
@@ -96,9 +110,32 @@ const SHOPSY_FIELDS = {
     retype: {},
     substitute: {},
     move: {
-      'Holder Type': 'Additional Description',
-      'Mounting Type': 'Additional Description',
-      Foldable: 'Additional Description',
+      'Holder Type': { from: 'Product Description', to: 'Additional Description' },
+      'Mounting Type': { from: 'Product Description', to: 'Additional Description' },
+      Foldable: { from: 'Product Description', to: 'Additional Description' },
+    },
+  },
+  /**
+   * Discovered on both storefronts 2026-10-03.
+   *
+   * Shopsy demotes four of Flipkart's mandatory Product Description attributes to
+   * optional ones on Additional Description. Design and GSM are unique labels; Length
+   * and Width are NOT — both are also package dimensions on the price tab — so all four
+   * are written in the qualified form.
+   *
+   * Material is the one option list that differs: Shopsy drops Aloe Vera and Banana
+   * Fiber. Cotton is on both, so no substitution is needed.
+   */
+  'Bath Towels': {
+    rename: { 'Items Included': 'Sales Package' },
+    drop: [],
+    retype: {},
+    substitute: {},
+    move: {
+      Design: { from: 'Product Description', to: 'Additional Description' },
+      GSM: { from: 'Product Description', to: 'Additional Description' },
+      Length: { from: 'Product Description', to: 'Additional Description' },
+      Width: { from: 'Product Description', to: 'Additional Description' },
     },
   },
   // Discovered on both storefronts 2026-10-01. The two forms are identical field for
@@ -164,7 +201,10 @@ export function adaptFieldMap(fieldMap, vertical, partner) {
   for (const [tab, fields] of Object.entries(out)) {
     const staying = [];
     for (const field of fields) {
-      const target = rules.move[field.label];
+      const rule = rules.move[field.label];
+      // A `{ from, to }` rule only fires on the tab it names. Without that check a
+      // label that exists on two tabs is moved from both — see the note on `move`.
+      const target = typeof rule === 'string' ? rule : rule && rule.from === tab ? rule.to : null;
       if (!target || target === tab) {
         staying.push(field);
         continue;

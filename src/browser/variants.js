@@ -773,11 +773,22 @@ export async function rowsByAxisValue(page, axisName) {
       ),
     { col },
   );
-  const map = new Map();
-  values.forEach((text, idx) => {
-    const key = text.toLowerCase();
-    // First wins: a value that somehow appears twice should not silently retarget.
-    if (key && !map.has(key)) map.set(key, idx);
-  });
-  return map;
+  // Return a finder rather than a map of exact strings. A cell does not always read
+  // back as the value that was typed into it: Brand Color shows "Light Blue", but a
+  // numeric axis like Number of Holders can render as "Units : 3", and the wall
+  // hanging organisers vary on exactly that. Exact match first, then the value as a
+  // WHOLE token inside the cell — token matching, so "1" cannot match "12".
+  const texts = values.map((t) => t.toLowerCase());
+  return {
+    texts,
+    find(value) {
+      const want = String(value).trim().toLowerCase();
+      if (!want) return undefined;
+      const exact = texts.indexOf(want);
+      if (exact !== -1) return exact;
+      const token = new RegExp(`(^|[^0-9a-z])${want.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^0-9a-z]|$)`, 'i');
+      const near = texts.findIndex((t) => token.test(t));
+      return near === -1 ? undefined : near;
+    },
+  };
 }
