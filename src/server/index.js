@@ -32,6 +32,25 @@ export function broadcast(message) {
   wss.clients.forEach((client) => {
     if (client.readyState === 1) client.send(payload);
   });
+  keepLog(message);
+}
+
+/**
+ * Every message the UI sees, also written to data/runs/log-<date>.txt.
+ *
+ * The live log existed only in the browser tab, so a run that failed "for different
+ * reasons" left nothing to read afterwards — the reasons were gone with the tab.
+ * Appended without awaiting: a slow disk must never hold up a run.
+ */
+function keepLog(message) {
+  const text = message.text || (message.event ? `[${message.event}]${message.error ? ` ${message.error}` : ''}` : '');
+  if (!text) return;
+  const now = new Date();
+  const day = now.toISOString().slice(0, 10);
+  const line = `${now.toISOString().slice(11, 19)} ${message.type || ''} ${text}\n`;
+  fs.mkdir('data/runs', { recursive: true })
+    .then(() => fs.appendFile(`data/runs/log-${day}.txt`, line, 'utf8'))
+    .catch(() => {});
 }
 
 wss.on('connection', () => broadcast({ type: 'info', text: 'Connected to Flipkart Lister.' }));

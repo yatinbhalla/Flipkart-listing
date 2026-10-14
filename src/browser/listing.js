@@ -124,6 +124,16 @@ export async function selectVertical(page, verticalLabel, log, { partner = 'flip
   // underneath, so choosing it afterwards would mean picking from the wrong catalogue.
   await selectPartner(page, partner, log);
 
+  // Look again just before choosing. The page restores the storefront used last, and
+  // that can land after the switch was checked — a Flipkart run was seen filling the
+  // Shopsy form. assertStorefront() catches it later regardless; this avoids it.
+  const wanted = PARTNER_RADIO[String(partner || 'flipkart').toLowerCase()];
+  const radio = page.locator(`#partner-context-segmented-control input[name="${wanted}"]`);
+  if ((await radio.count()) && !(await radio.isChecked().catch(() => true))) {
+    log(`The Flipkart/Shopsy switch moved off ${wanted} — setting it again.`);
+    await selectPartner(page, partner, log);
+  }
+
   // A vertical may be given as a full category path — "Home & Kitchen Accessories /
   // Kitchen & Table Linen / Table Cover" — or as the bare leaf. Cards and the search
   // box both work on the leaf; the typeahead rows carry the whole path, which is
@@ -136,7 +146,11 @@ export async function selectVertical(page, verticalLabel, log, { partner = 'flip
   // Shopsy slider instead. Which one is live is not worth betting a run on, so both
   // forms are tried; the storefront itself is already set by the partner switch.
   const bare = leaf.replace(/^shopsy\s+/i, '');
-  const names = [...new Set([leaf, bare, `Shopsy ${bare}`])];
+  // The "Shopsy " form is for Shopsy runs only. Offered on a Flipkart run, it let a
+  // switch that had quietly flipped to Shopsy hand over "Shopsy Kids Apparel Combo"
+  // as a match, and the run then filled Flipkart's labels into Shopsy's form.
+  const onShopsy = String(partner).toLowerCase() === 'shopsy';
+  const names = onShopsy ? [...new Set([leaf, bare, `Shopsy ${bare}`])] : [...new Set([leaf, bare])];
 
   // Favourited verticals appear as cards under "Your Verticals" — cheapest path.
   for (const name of names) {
@@ -220,9 +234,13 @@ export async function selectVertical(page, verticalLabel, log, { partner = 'flip
       // A full-path match first: it is the only one that cannot pick the wrong
       // branch. Leaf matching stays as the fallback for paths stored as a bare name.
       const wanted = names.map((n) => n.toLowerCase());
+      // A Flipkart run never takes a row from the Shopsy branch, whatever its leaf.
+      const allowed = (t) => onShopsy || !/^\s*shopsy\s*\//i.test(t);
       let index = texts.findIndex((t) => norm(t) === wantFull);
-      if (index < 0) index = texts.findIndex((t) => wanted.includes(tail(t)));
-      if (index < 0) index = texts.findIndex((t) => wanted.some((w) => tail(t).includes(w)));
+      if (index < 0) index = texts.findIndex((t) => allowed(t) && wanted.includes(tail(t)));
+      if (index < 0) {
+        index = texts.findIndex((t) => allowed(t) && wanted.some((w) => tail(t).includes(w)));
+      }
       if (index < 0) {
         throw new Error(
           `Searched for "${bare}" (also tried ${names.join(', ')}) but no suggestion ` +
@@ -288,6 +306,30 @@ export async function selectVertical(page, verticalLabel, log, { partner = 'flip
     );
   }
   log(`✓ Vertical: ${verticalLabel}`);
+}
+
+/**
+ * Prove the form belongs to the storefront the run is listing on.
+ *
+ * Once a vertical is chosen, the URL names it: `vertical=kids_apparel_combo` on
+ * Flipkart, `vertical=shopsy_kids_apparel_combo` on Shopsy. The partner switch can
+ * flip on its own after it has been checked — the page restores the storefront used
+ * last — and the run then fills one storefront's labels into the other's form and
+ * fails a tab later with "Field not found: Brand Size". Failing here names the real
+ * problem, before any image is uploaded.
+ */
+export function assertStorefront(page, partner) {
+  const vertical = /[?&]vertical=([^&]+)/.exec(page.url())?.[1];
+  if (!vertical) return;
+  const isShopsyForm = /^shopsy_/i.test(decodeURIComponent(vertical));
+  const wantShopsy = String(partner).toLowerCase() === 'shopsy';
+  if (isShopsyForm !== wantShopsy) {
+    throw new Error(
+      `Opened the ${isShopsyForm ? 'Shopsy' : 'Flipkart'} form (${vertical}) on a ` +
+        `${wantShopsy ? 'Shopsy' : 'Flipkart'} run — the Flipkart/Shopsy switch changed ` +
+        `after it was set. Nothing was uploaded; run this listing again.`,
+    );
+  }
 }
 
 export async function selectBrand(page, brand, log) {
@@ -615,6 +657,30 @@ export async function fillVariants(
   // wired up here yet.
   log('Saving variants…');
   await saveVariantTab(page);
+
+  // Prove every variant exists before going on. Create was clicked and trusted: a
+  // run that lost its Yellow variant here only found out at the image step, as "No
+  // variant image target". The side menu lists one entry per variant, so a value
+  // missing from it is a variant Flipkart did not keep — add it once more.
+  for (let pass = 1; pass <= 2; pass++) {
+    const listed = (await page.locator('[class*=SideMenuItemText]').allInnerTexts().catch(() => []))
+      .map((t) => t.trim().toLowerCase());
+    const missing = variants
+      .slice(1)
+      .filter((v) => v.axisValue && !listed.some((t) => t.includes(String(v.axisValue).toLowerCase())));
+    if (!missing.length) break;
+    if (pass === 2) {
+      throw new Error(
+        `Flipkart did not keep the variant(s) ${missing.map((v) => v.axisValue).join(', ')} ` +
+          `after Create. Variants on screen: ${listed.join(' / ') || '(none)'}.`,
+      );
+    }
+    for (const v of missing) {
+      log(`  ↻ ${v.axis} = ${v.axisValue} is missing after Create — adding it again`);
+      await V.addVariant(page, v.axis, v.axisValue);
+    }
+    await saveVariantTab(page);
+  }
 
   // Report the matrix columns once per run. They differ per vertical and only
   // exist after a variant is created, so without this the only way to learn a new

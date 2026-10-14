@@ -410,9 +410,22 @@ router.post('/', async (req, res) => {
           storefront === 'shopsy'
             ? path.shopsyVerticalPath || verticalFor(path.vertical, storefront)
             : path.verticalPath || path.vertical;
-        await L.selectVertical(page, wantedVertical, log, { partner: storefront });
-        throwIfStopped();
-        await L.selectBrand(page, path.brand, log);
+        // Twice at most. The Flipkart/Shopsy switch can flip back to the storefront
+        // used last after it has been set, and the other storefront's form then opens
+        // under the same vertical name. Nothing is uploaded until after this, so going
+        // back and choosing again costs half a minute — failing cost the listing.
+        for (let attempt = 1; ; attempt++) {
+          await L.selectVertical(page, wantedVertical, log, { partner: storefront });
+          throwIfStopped();
+          await L.selectBrand(page, path.brand, log);
+          try {
+            L.assertStorefront(page, storefront);
+            break;
+          } catch (err) {
+            if (attempt >= 2) throw err;
+            log(`↻ ${err.message.split(' — ')[0]} — choosing the vertical again.`);
+          }
+        }
         throwIfStopped();
         // Checked before the images especially: a wrong image is the reason to stop,
         // and stopping here means nothing has been uploaded yet.
