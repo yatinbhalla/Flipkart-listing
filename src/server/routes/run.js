@@ -442,13 +442,22 @@ router.post('/', async (req, res) => {
         }
         log(`✓ ${label}: all tabs green.`);
 
+        // The draft's own address — its requestId is what reopens it. Without this a
+        // draft left for review can only be found again by hunting Listings in
+        // Progress, and send-to-qc takes exactly this URL.
+        const draftUrl = page.url();
         if (sendToQc) {
           await L.sendToQc(page, log);
         } else {
-          log(`${label}: draft complete — not submitted (QC opt-in is off).`);
+          log(`${label}: draft complete — not submitted (QC opt-in is off). Draft: ${draftUrl}`);
         }
 
-        done.push({ sku: parent.sku, text: describeListing(resolved), skus: listingSkus(resolved) });
+        done.push({
+          sku: parent.sku,
+          text: describeListing(resolved),
+          skus: listingSkus(resolved),
+          url: draftUrl,
+        });
         log(`${label} done: ${describeListing(resolved)}`);
         broadcast({
           type: 'event',

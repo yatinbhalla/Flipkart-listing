@@ -6,8 +6,13 @@
  * read until then. So this walks the real flow, stops at the filled form, and
  * reports every control by id, which is how the driver addresses them.
  *
- * Run: node tools/meesho-discover.mjs "<category path>" "<front image>" <outFile>
+ * Run: node tools/meesho-discover.mjs "<category path>" "<front image>" <outFile> ["<size>"]
  * The category path is the full breadcrumb as the typeahead prints it, with > or /.
+ *
+ * The size popup's options are always read. Give a size — "Free Size", "0-3 Months"
+ * — to also tick it: that creates the price row and whatever per-size fields the
+ * category adds, and those are reported too. Without one the schema stops short of
+ * the price row, which is all earlier schemas captured.
  */
 import fs from 'fs/promises';
 import { getMeeshoSession } from '../src/browser/meesho/session.js';
@@ -16,7 +21,7 @@ import { appears } from '../src/browser/meesho/listing.js';
 const SELECT_CATEGORY_URL =
   'https://supplier.meesho.com/panel/v3/new/cataloging/vaqbo/catalogs/single/select-category';
 
-const [, , categoryArg, frontImage, outFile] = process.argv;
+const [, , categoryArg, frontImage, outFile, sizeArg] = process.argv;
 if (!categoryArg || !frontImage || !outFile) {
   console.error('usage: node tools/meesho-discover.mjs "<category>" "<image>" <out.json>');
   process.exit(1);
@@ -154,6 +159,68 @@ for (const field of before) {
 }
 log(`  read options for ${Object.keys(options).length} selects`);
 
+/**
+ * The size popup: a list of DRAWN checkboxes behind the one unnamed "Select" input,
+ * closed by Apply. Its labels are read off the popup that holds the Apply button,
+ * since the boxes themselves carry no text and no input.
+ */
+const SIZE_INPUT = 'input[placeholder="Select"]:not([name])';
+const POPUP_CHROME = /^(apply|cancel|clear|clear all|reset|select all|search.*|done)$/i;
+let sizeOptions = [];
+let after = null;
+try {
+  await page.locator(SIZE_INPUT).first().click({ timeout: 10000 });
+  const apply = page.locator('button:has-text("Apply")').first();
+  if (await apply.isVisible({ timeout: 8000 }).catch(() => false)) {
+    sizeOptions = await apply.evaluate((btn, chrome) => {
+      const re = new RegExp(chrome.source, chrome.flags);
+      // Walk out from Apply to the smallest ancestor holding more than the buttons.
+      for (let n = btn.parentElement; n; n = n.parentElement) {
+        const lines = (n.innerText || '').split(/\n/).map((t) => t.trim()).filter(Boolean);
+        const labels = lines.filter((t) => !re.test(t));
+        if (labels.length >= 2) return [...new Set(labels)];
+      }
+      return [];
+    }, { source: POPUP_CHROME.source, flags: POPUP_CHROME.flags });
+    log(`  size options: ${sizeOptions.join(' | ') || '(none read)'}`);
+
+    if (sizeArg) {
+      // Same as the driver: clicking the label is a no-op, the box left of it ticks.
+      const label = page.locator(`text="${sizeArg}"`).first();
+      const box = await label.boundingBox().catch(() => null);
+      if (!box) throw new Error(`The size popup has no "${sizeArg}".`);
+      await page.mouse.click(box.x - 18, box.y + box.height / 2);
+      await page.waitForTimeout(500);
+      await apply.click();
+      await appears(page, '#meesho_price', 30000);
+    } else {
+      await page.keyboard.press('Escape').catch(() => {});
+    }
+  }
+} catch (err) {
+  log(`  size step failed: ${err.message}`);
+}
+
+if (sizeArg && (await page.locator('#meesho_price').count())) {
+  const seen = new Set(before.map((f) => f.id));
+  after = (await readFields()).filter((f) => !seen.has(f.id));
+  log(`  size row added ${after.length} fields: ${after.map((f) => f.id).join(', ')}`);
+  for (const field of after) {
+    if (field.label !== 'Select') continue;
+    try {
+      await page.locator(`#${CSS_ESCAPE(field.id)}`).first().click({ timeout: 10000 });
+      if (!(await appears(page, LIST, 5000))) continue;
+      const texts = await page.locator(LIST).last().locator('li').allInnerTexts().catch(() => []);
+      options[field.id] = [...new Set(texts.map((t) => t.trim()).filter(Boolean))];
+    } catch {
+      /* reported by its absence from `options` */
+    } finally {
+      await page.keyboard.press('Escape').catch(() => {});
+      await page.waitForTimeout(200);
+    }
+  }
+}
+
 /** Playwright needs a literal id; Meesho's generated ids ("mui-11") are safe but escape anyway. */
 function CSS_ESCAPE(id) {
   return String(id).replace(/([^\w-])/g, '\\$1');
@@ -165,16 +232,19 @@ const schema = {
   discoveredAt: new Date().toISOString().slice(0, 10),
   entry: 'Catalog Uploads > Add Single Catalog',
   url: page.url(),
-  sizeRowCreated: false,
+  sizeOptions,
+  sizeRowCreated: !!after,
+  sizeChosen: after ? sizeArg : undefined,
   fieldCountBeforeSize: before.length,
-  fieldCount: before.length,
-  requiredLabels: before.filter((f) => f.required).map((f) => f.label || f.id),
+  fieldCount: before.length + (after?.length || 0),
+  requiredLabels: [...before, ...(after || [])].filter((f) => f.required).map((f) => f.label || f.id),
   fields: before,
+  sizeRowFields: after || undefined,
   options,
 };
 
 await fs.writeFile(outFile, JSON.stringify(schema, null, 2), 'utf8');
 log(`\nwrote ${outFile}`);
-log(`required: ${schema.requiredLabels.length} of ${before.length}`);
+log(`required: ${schema.requiredLabels.length} of ${schema.fieldCount}`);
 log(before.map((f) => `  ${f.id.padEnd(34)}${f.required ? '*' : ' '} ${f.label}`).join('\n'));
 log('\nThe browser is left on the form — nothing was submitted.');

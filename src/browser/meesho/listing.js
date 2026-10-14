@@ -299,10 +299,15 @@ export async function createListing(page, { path: cfg, variant, sku, images, sub
   // The price row does not exist until a size is chosen, and the size options are
   // DRAWN checkboxes: there is no input[type=checkbox] on the page and clicking the
   // option's text is a no-op, so the box itself has to be clicked.
-  log('== size column');
+  //
+  // Free Size unless the path names one. Clothing is sized by age — Kids Clothing
+  // Set offers "0-6 Months" and the rest — and Free Size there would list a newborn
+  // set as fitting everyone.
+  const sizeOption = M.sizeOption || 'Free Size';
+  log(`== size column (${sizeOption})`);
   await page.locator('input[placeholder="Select"]:not([name])').first().click();
-  await appears(page, 'text="Free Size"', 12000);
-  const box = await page.locator('text="Free Size"').first().boundingBox().catch(() => null);
+  await appears(page, `text="${sizeOption}"`, 12000);
+  const box = await page.locator(`text="${sizeOption}"`).first().boundingBox().catch(() => null);
   if (box) {
     await page.mouse.click(box.x - 18, box.y + box.height / 2);
     await page.waitForTimeout(500);
@@ -318,7 +323,9 @@ export async function createListing(page, { path: cfg, variant, sku, images, sub
     .first()
     .inputValue()
     .catch(() => '');
-  if (!/free size/i.test(sizeColumn)) f.problems.push('Free Size column');
+  if (!sizeColumn.toLowerCase().includes(sizeOption.toLowerCase())) {
+    f.problems.push(`${sizeOption} column`);
+  }
 
   log('== remaining images');
   if (await f.has('#addMoreImagesInput')) {
@@ -366,6 +373,13 @@ export async function createListing(page, { path: cfg, variant, sku, images, sub
   if (M.features) await f.pick('#features', M.features, 'features');
   if (M.secondaryColor) await f.pick('#secondary_color', M.secondaryColor, 'secondary colour');
   if (M.includedComponents) await f.type('#included_components', M.includedComponents, 'included components');
+  // Attributes only one category has, keyed by field id. Kids Clothing Set alone
+  // carries a dozen — top and bottom fabric, set type, the per-size chest, length
+  // and waist — and a named branch per attribute would bury the shared flow. Ids are
+  // matched with [id="…"] because some contain a slash ("top_fit/shape").
+  for (const [id, value] of Object.entries(M.picks || {})) {
+    await f.pick(`[id="${id}"]`, value, id);
+  }
   // A path can state its Meesho size outright. The 85 cm dohar is 33.5 inch, which
   // Baby Blanket's whole-inch list does not carry, and trying 33.5 before falling back
   // left the size row empty on some listings of a batch — so those paths say 34.
@@ -390,7 +404,9 @@ export async function createListing(page, { path: cfg, variant, sku, images, sub
     f.problems.length = before;
   }
 
-  await f.pick('#weight', ['0.1', '0.2'], 'weight');
+  // `#weight` is the product's own weight on most categories, but on Kids Clothing
+  // Set it is the size row's baby-weight band ("3-5"), so a path can say which.
+  await f.pick('#weight', M.weight ?? ['0.1', '0.2'], 'weight');
   await f.pick('#weight_unit', 'kg', 'weight unit');
 
   // Country of origin FIRST: choosing India disables all three importer fields and

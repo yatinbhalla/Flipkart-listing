@@ -153,6 +153,42 @@ is settled.
 steps, and `product_unit` offers Ft / Inch / M / cm / mm. `createListing` hardcodes Inch,
 so the towels go in as 20.5 x 13.5 Inch rather than 52 x 34 cm.
 
+## Kids Clothing Set (added 2026-10-13)
+
+Discovered live for the 5-piece baby set (BS_5ST_YL on Boys, BS_5ST_PK on Girls), with
+`tools/meesho-discover.mjs … "0-3 Months"`. Schemas:
+`MEESHO_BOYS_CLOTHING_SET_SCHEMA.json` and `MEESHO_GIRLS_CLOTHING_SET_SCHEMA.json`. The
+two forms have the same 50 field ids. Only some option lists differ: Girls adds Frock,
+Kurta, Dupatta, Palazzo and so on, and `generic_name` offers "Boy's Clothing Set" on one
+form and "Girl's Clothing Set" on the other.
+
+**It is not a Free Size category.** The size popup lists age ranges:
+
+- Months: 0-2, 0-3, 0-6, 2-4, 3-6, 4-6, 6-9, 6-12, 9-12, 12-18 and 18-24.
+- Years: 0-1, 1-2, then each year up to 15-16.
+- Free Size.
+
+`createListing` only ever ticks Free Size, so it has to learn to tick a named size
+before it can list this category.
+
+**Ticking a size adds 10 fields, not 5.** Besides the price row it adds per-size
+garment measurements, all searchable dropdowns:
+
+- `top_chest_size`, `top_length_size`, `bottom_waist_size` and `bottom_length_size`:
+  numbers in 0.5 steps, the unit is not shown.
+- `weight`: a band, e.g. 3-5, 5-8 or 8-10, presumably the baby's weight in kg.
+
+The other new fields:
+
+- `top_fabric`, `bottom_fabric`: mandatory. The list includes Cotton, Hosiery Cotton and
+  Cotton Blend.
+- `set_type`: mandatory. Top & Bottom Set / Winter Sets / Value Packs / Fancy Dress.
+- `included_components`: mandatory free text.
+- `multipack`: mandatory. "Single", "Pack Of 2" … "More than 10".
+- Optional: `top_type`, `bottom_type`, `add_ons` (Cap, Booties, Jacket …), `neck`,
+  `sleeve_length`, `occasion`, top/bottom colour, pattern, fit and closure.
+- `hsn_code` is the searchable kind and offers 61112000 and 611120.
+
 ## Getting to the form at all (changed 2026-10-01)
 
 `https://supplier.meesho.com/panel/v3/new/cataloging/vaqbo/catalogs/single/add` no longer

@@ -631,15 +631,14 @@ export async function readOptions(page, label, occurrence = 0) {
   if (!(await button.count())) return [];
   await button.click().catch(() => {});
   await settle(page, 700);
-  const visible = page.locator(`${OPTION}:visible`);
-  const out = [];
-  const count = await visible.count();
-  for (let i = 0; i < Math.min(count, 60); i++) {
-    out.push(((await visible.nth(i).innerText().catch(() => '')) || '').trim());
-  }
+  // Every option, in one read. This used to stop at the first 60, which silently
+  // cut Country Of Origin off at "Cameroon" and dropped most of Fabric and Primary
+  // Product Type — and a value missing from a schema looks exactly like a value
+  // Flipkart does not offer.
+  const texts = await page.locator(`${OPTION}:visible`).allInnerTexts().catch(() => []);
   await page.keyboard.press('Escape').catch(() => {});
   await settle(page, 300);
-  return out.filter(Boolean);
+  return texts.map((t) => t.trim()).filter(Boolean);
 }
 
 /** Every inline validation message currently rendered on this tab. */

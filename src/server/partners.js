@@ -26,6 +26,9 @@ const SHOPSY_VERTICAL = {
   // Prefixed AND singular, under Shopsy / Bathing Accessories. Read off the live
   // typeahead on 2026-10-03.
   'Bath Towels': 'Shopsy / Bathing Accessories / Shopsy Bath Towel',
+  // Under "Combo Sets", not under Shopsy's own "Co-ords and Combo Sets" branch where
+  // Flipkart files it. Read off the complete category tree on 2026-10-12.
+  'Kids Apparel Combo': 'Shopsy / Combo Sets / Shopsy Kids Apparel Combo',
 };
 
 /** What the vertical is called on `partner`. */
@@ -148,6 +151,34 @@ const SHOPSY_FIELDS = {
     retype: {},
     substitute: {},
     move: {},
+  },
+  /**
+   * Discovered on both storefronts 2026-10-13, with complete option lists — see
+   * content/KIDS_APPAREL_COMBO_SCHEMA.json and its SHOPSY_ twin.
+   *
+   * Flipkart's Brand Size is Shopsy's Size, with the same age ranges. Five of
+   * Flipkart's mandatory Product Description attributes are optional on Shopsy's
+   * Additional Description.
+   *
+   * Shopsy has no plain "Cotton" in Fabric, only Pure Cotton, Cotton Blend and
+   * friends. A 100% cotton garment is Pure Cotton there.
+   *
+   * The fields that exist on one storefront only — Suitable For on Shopsy; Number of
+   * Apparel Combo, Net Quantity and Suitable for Gifting on Flipkart — are marked
+   * optional in the path's field map, so each storefront skips the ones it lacks.
+   */
+  'Kids Apparel Combo': {
+    rename: { 'Brand Size': 'Size', 'Items Included': 'Sales Package' },
+    drop: [],
+    retype: {},
+    substitute: { Fabric: { Cotton: 'Pure Cotton' } },
+    move: {
+      'Label Size': { from: 'Product Description', to: 'Additional Description' },
+      'Primary Product Type': { from: 'Product Description', to: 'Additional Description' },
+      'Secondary Product Type': { from: 'Product Description', to: 'Additional Description' },
+      Pattern: { from: 'Product Description', to: 'Additional Description' },
+      Occasion: { from: 'Product Description', to: 'Additional Description' },
+    },
   },
 };
 

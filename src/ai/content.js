@@ -41,6 +41,9 @@ export function buildSpecs(variant) {
   if (width && length) {
     const cm = (n) => Math.round(Number(n) * INCH_TO_CM);
     add('Size', `${width} x ${length} inches (approximately ${cm(width)} x ${cm(length)} cm)`);
+  } else {
+    // Clothing is sized by age, not by inches — "0-6 Months" is the whole answer.
+    add('Size', variant.sizeLabel);
   }
   // Field names differ by vertical — Table Cover calls it `material` and
   // `colorText`, Blanket calls the same things `outerMaterial` and `brandColor`.
@@ -110,8 +113,11 @@ const ANGLES = [
  */
 export async function generateCopyPool(path, variant, count, log) {
   const pool = [];
+  // The stock angles are written for table covers. A path selling something else
+  // names its own, or a baby clothing set gets asked what it protects the table from.
+  const angles = path.copyAngles?.length ? path.copyAngles : ANGLES;
   for (let i = 0; i < count; i++) {
-    const angle = ANGLES[i % ANGLES.length];
+    const angle = angles[i % angles.length];
     const avoid = pool
       .slice(-3)
       .flatMap((c) => c.searchKeywords || [])
@@ -135,7 +141,11 @@ export async function generateCopyPool(path, variant, count, log) {
 }
 
 export async function generateCopy(path, variant, log, options = {}) {
-  const size = `${variant.sizeInches.width}x${variant.sizeInches.length} inch`;
+  const { width, length } = variant.sizeInches || {};
+  // A variant sized by age carries `sizeLabel` ("0-6 Months") and no inches; asking
+  // for "undefinedxundefined inch" in the prompt is how that used to read.
+  const size = width && length ? `${width}x${length} inch` : variant.sizeLabel || '';
+  const sizeFor = [size, variant.seatingCapacity].filter(Boolean).join(' / ');
   const specs = buildSpecs(variant);
   // The run appends ` <SKU>` to Model Name on some paths, and the whole line has to
   // stay under 80 — so the title gets only what the SKU leaves.
@@ -152,14 +162,13 @@ PRODUCT
 - Colour: ${(variant.colorText || []).join(', ')}
 - Pattern: ${(variant.pattern || []).join(', ')}
 - Size: ${size}
-- Fits: ${variant.seatingCapacity}
-- Pack contains: ${variant.packOf} unit(s)
+${variant.seatingCapacity ? `- Fits: ${variant.seatingCapacity}\n` : ''}${variant.idealFor ? `- Ideal for: ${[].concat(variant.idealFor).join(', ')}\n` : ''}- Pack contains: ${[].concat(variant.itemsIncluded || `${variant.packOf} unit(s)`).join(', ')}
 - Extra notes: ${path.copyNotes || 'none'}
 
 HARD RULES
 1. Never mention ANY brand name — not the seller's, not a marketplace, not a
    competitor. No brand-like proper nouns at all.
-2. Write specifically for the ${size} / ${variant.seatingCapacity} size. Mention the
+2. Write specifically for the ${sizeFor} size. Mention the
    size naturally where a buyer would search for it.
 3. Optimise for both keyword search and AI-generated answers: plain factual
    sentences that answer what a buyer actually asks — what it protects against,
