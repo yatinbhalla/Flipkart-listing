@@ -125,6 +125,16 @@ export async function setText(page, label, value, occurrence = 0) {
   const row = await rowFor(page, label, occurrence);
   const input = row.locator('input:not([type=hidden]), textarea').first();
 
+  // A number box cannot hold text at all — Flipkart turned Thread Count into one,
+  // and PVC covers send "Not Applicable" there. Empty is the only thing such a field
+  // can say for "no value", so leave it blank and report it rather than failing the
+  // whole listing. A mandatory field left blank still fails Flipkart's own check.
+  const type = await input.getAttribute('type').catch(() => null);
+  if (type === 'number' && !/^-?\d+(\.\d+)?$/.test(String(value).trim())) {
+    _aiLog(`⚠ "${label}" only takes a number — left it blank instead of "${String(value).slice(0, 40)}"`);
+    return;
+  }
+
   // Name the field and say what the row actually holds. A bare Playwright timeout
   // quoting an internal data-fkq token gives nothing to act on, and the usual cause
   // is that the field is not a plain text box at all — it is a dropdown or a pill

@@ -660,19 +660,36 @@ export async function fillVariants(
 
   // Prove every variant exists before going on. Create was clicked and trusted: a
   // run that lost its Yellow variant here only found out at the image step, as "No
-  // variant image target". The side menu lists one entry per variant, so a value
-  // missing from it is a variant Flipkart did not keep — add it once more.
+  // variant image target". A value missing from both lists below is a variant
+  // Flipkart did not keep — add it once more.
+  //
+  // The matrix's axis column is the real list. The image side menu is NOT one entry
+  // per variant: it groups by the axes that change the photo (Color, Pack of), so a
+  // Seating Capacity variant shares the parent's entry — the 6 Seater table cover
+  // was on the draft while the side menu read only "black, 1", and re-adding it on
+  // that evidence is worse than useless. The side menu stays as a second witness for
+  // a vertical whose matrix column reads back differently from the typed value.
   for (let pass = 1; pass <= 2; pass++) {
     const listed = (await page.locator('[class*=SideMenuItemText]').allInnerTexts().catch(() => []))
       .map((t) => t.trim().toLowerCase());
+    await F.scrollSection(page, 'bottom');
+    const columns = {};
+    for (const axis of new Set(variants.slice(1).map((v) => v.axis).filter(Boolean))) {
+      columns[axis] = await V.rowsByAxisValue(page, axis).catch(() => null);
+    }
     const missing = variants
       .slice(1)
-      .filter((v) => v.axisValue && !listed.some((t) => t.includes(String(v.axisValue).toLowerCase())));
+      .filter((v) => v.axisValue)
+      .filter((v) => columns[v.axis]?.find(v.axisValue) === undefined)
+      .filter((v) => !listed.some((t) => t.includes(String(v.axisValue).toLowerCase())));
     if (!missing.length) break;
     if (pass === 2) {
+      const rows = Object.entries(columns)
+        .map(([axis, c]) => `${axis} column: ${c ? c.texts.join(' / ') || '(empty)' : '(not found)'}`)
+        .join('; ');
       throw new Error(
         `Flipkart did not keep the variant(s) ${missing.map((v) => v.axisValue).join(', ')} ` +
-          `after Create. Variants on screen: ${listed.join(' / ') || '(none)'}.`,
+          `after Create. Image menu: ${listed.join(' / ') || '(none)'}. ${rows}.`,
       );
     }
     for (const v of missing) {
