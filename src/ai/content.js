@@ -116,11 +116,18 @@ export async function generateCopyPool(path, variant, count, log) {
   // The stock angles are written for table covers. A path selling something else
   // names its own, or a baby clothing set gets asked what it protects the table from.
   const angles = path.copyAngles?.length ? path.copyAngles : ANGLES;
+  // The seller's own keywords lead every version's list, because generateCopy puts
+  // them there itself. Passing them back as phrases to avoid told the model to steer
+  // clear of "kitchen apron" — so it stopped saying "apron" and wrote "protective
+  // garment" and "textile accessory" instead, in 29 of 30 versions of one pool. They
+  // are added regardless of what the model writes, so avoiding them gains nothing.
+  const seller = new Set((path.extraKeywords || []).map((k) => String(k).trim().toLowerCase()));
   for (let i = 0; i < count; i++) {
     const angle = angles[i % angles.length];
     const avoid = pool
       .slice(-3)
       .flatMap((c) => c.searchKeywords || [])
+      .filter((k) => !seller.has(String(k).trim().toLowerCase()))
       .slice(0, 24);
     // Titles converge faster than keywords do — the model reaches for the same
     // noun order every time — so every title already used is passed back, not just
@@ -183,7 +190,10 @@ ${options.angle ? `7. This is version ${options.index + 1} of ${options.total} f
    different way — different sentence shapes, different search phrasings. Never
    contradict the details above.` : ''}
 ${options.avoid?.length ? `8. These phrases are already used by other versions; choose different ones:
-   ${options.avoid.join(', ')}` : ''}
+   ${options.avoid.join(', ')}
+   This is about phrasing only. Keep calling the product by its own name, as in
+   "Item" above — never swap it for a vaguer word like "garment", "accessory" or
+   "item" to dodge these phrases.` : ''}
 ${options.usedTitles?.length ? `9. These titles are already taken by other versions of this product. Yours must
    differ from every one of them — reorder the attributes, lead with a different
    one, or name a different detail. Never make a title unique by numbering it —

@@ -29,6 +29,7 @@ Catalogues saved 2026-10-12: Flipkart 3,954 verticals, Shopsy 1,600, Meesho 3,78
 | Table cover (net, PVC) | Home & Kitchen Accessories / Kitchen & Table Linen / Table Cover `#2791` | Shopsy / Baby Bedding & Gear / Shopsy Table Cover `#5409` | Home & Kitchen > Home Furnishings > Kitchen Linens > Table Cloths |
 | Wall hanging organizer | Household Care & Supplies / Home Organizers & Storage / Hanging Organizers `#2392` | Shopsy / Home Organizers & Storage / Shopsy Hanging Organizer | Home & Kitchen > Home Decor > Decorative Accessories > Wall Decor & Hangings |
 | Aasan / prayer mat | Home Furnishing / Floor Coverings / Mat `#1802` | Shopsy / Baby Bedding & Gear / Shopsy Mat `#5366` | Home & Kitchen > Home Furnishings > Carpets & Rugs > Pooja Mats |
+| Kitchen apron (quilted, floral print) | Home & Kitchen Accessories / Kitchen & Table Linen / Apron `#2785` | Shopsy / Kitchen & Table Linen / Shopsy Apron `#5375` | Home & Kitchen > Home Furnishings > Kitchen Linens > Aprons `#13342` |
 | Prayer kit | Home Decor / Festival Supplies / Prayer Kit `#1746` | Shopsy / Festival Supplies / Shopsy Prayer Kit | (not mapped yet) |
 
 `#n` is the portal's own vertical or category id, from the saved catalogues.

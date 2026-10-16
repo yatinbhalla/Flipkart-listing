@@ -431,6 +431,42 @@ export async function fillTabs(page, path, variant, log, { partner = 'flipkart' 
   for (const [tabName, tabFields] of Object.entries(fields)) {
     await fillTab(page, tabName, tabFields, variant, log);
   }
+  await confirmListingSaved(page, fields[F.TABS.price], variant, log);
+}
+
+/**
+ * Prove the price tab's listing block was saved, and fill it once more if not.
+ *
+ * Seen on a Shopsy apron run on 2026-10-16 that came straight after a Flipkart one in
+ * the same batch: the price tab was filled, the run said "all tabs green", and the
+ * draft came back from a reload with the whole listing block empty — Seller SKU ID,
+ * Listing Status, MRP, price, stock, procurement, shipping provider — while the
+ * product attributes on the same tab (package size, HSN, tax code) had kept. The
+ * error badge read 0 and Send to QC stayed enabled, so neither verifyReady check
+ * could see it. The same path run on its own saved cleanly.
+ *
+ * The SKU is the field to read back: it opens the listing block, and an empty SKU
+ * is exactly what the broken draft reported.
+ */
+async function confirmListingSaved(page, priceFields, variant, log) {
+  if (!priceFields?.some((f) => f.label === 'Seller SKU ID') || !variant.sku) return;
+  const saved = async () => {
+    await F.openTab(page, F.TABS.images);
+    await F.openTab(page, F.TABS.price);
+    return (await F.readText(page, 'Seller SKU ID').catch(() => '')).trim();
+  };
+  const first = await saved();
+  if (first === variant.sku) return;
+  log(`⚠ The price tab did not keep its listing block (Seller SKU ID reads "${first}") — filling it again.`);
+  await fillTab(page, F.TABS.price, priceFields, variant, log);
+  const second = await saved();
+  if (second !== variant.sku) {
+    throw new Error(
+      `The price tab will not save: Seller SKU ID reads "${second}" after filling it twice. ` +
+        `MRP, price and stock are probably missing from the draft too.`,
+    );
+  }
+  log('✓ Listing block saved on the second fill.');
 }
 
 export async function fillPriceStock(page, v, log) {

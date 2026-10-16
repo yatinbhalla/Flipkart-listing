@@ -1,7 +1,95 @@
 import express from 'express';
 import { getSession } from '../../browser/session.js';
+import * as F from '../../browser/form.js';
 
 const router = express.Router();
+
+/**
+ * GET /api/debug/netlog?on=1 | ?off=1 | (no args) — record Seller Hub's write calls.
+ *
+ * A tab save is a POST that can fail without anything on screen saying so: the tab
+ * still switches, and the values are simply not there after a reload. Recording
+ * every non-GET /napi/ response with its status and the start of its body is how
+ * you find out which save was refused and why.
+ */
+let netlog = null;
+let netHandler = null;
+router.get('/netlog', async (req, res) => {
+  try {
+    const { page } = await getSession(() => {});
+    if (req.query.on) {
+      netlog = [];
+      if (netHandler) page.off('response', netHandler);
+      netHandler = async (resp) => {
+        const reqq = resp.request();
+        if (reqq.method() === 'GET' || !/\/napi\//.test(resp.url())) return;
+        const body = await resp.text().catch(() => '');
+        netlog.push({
+          at: new Date().toISOString().slice(11, 19),
+          method: reqq.method(),
+          url: resp.url().replace(/^https:\/\/[^/]+/, '').slice(0, 120),
+          status: resp.status(),
+          sent: (reqq.postData() || '').slice(0, Number(req.query.max || 600)),
+          body: body.slice(0, Number(req.query.max || 600)),
+        });
+      };
+      page.on('response', netHandler);
+      return res.json({ recording: true });
+    }
+    if (req.query.off && netHandler) {
+      page.off('response', netHandler);
+      netHandler = null;
+    }
+    res.json({ recording: Boolean(netHandler), calls: netlog || [] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * GET /api/debug/fields?tab=<tab name>&goto=<draft url> — every field on one tab
+ * with the value it holds right now.
+ *
+ * The tab counter says how many fields are filled, not which, and a draft can come
+ * back from a reload with values silently missing. This reads each row the way a
+ * person would: the text box's value, the dropdown's caption, or the pills.
+ */
+router.get('/fields', async (req, res) => {
+  try {
+    const { page } = await getSession(() => {});
+    if (req.query.goto) {
+      await page.goto(String(req.query.goto), { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(Number(req.query.wait || 8000));
+    }
+    if (req.query.tab) await F.openTab(page, String(req.query.tab));
+    const fields = await page.evaluate((PANEL) => {
+      const panel = document.querySelector(PANEL);
+      if (!panel) return [];
+      return [...panel.querySelectorAll('[class*=AttributeItemLabelName]')].map((el) => {
+        const row = el.closest('[class*=EditAttributeNameWrapper]')?.parentElement;
+        const input = row?.querySelector('input:not([type=hidden]), textarea');
+        const dropdown = row?.querySelector('button[class*=DropdownButton]');
+        const pills = [...(row?.querySelectorAll('[class*=SmallPillContainer]') || [])];
+        const value = pills.length
+          ? pills.map((p) => p.innerText.trim()).join(' | ')
+          : dropdown
+            ? dropdown.innerText.trim()
+            : input?.value ?? '';
+        const error = [...(row?.querySelectorAll('[class*=rror]') || [])]
+          .map((e) => e.innerText.trim())
+          .filter(Boolean)[0];
+        return {
+          label: el.innerText.replace(/\*/g, '').trim(),
+          value: String(value).slice(0, 80),
+          ...(error ? { error: error.slice(0, 120) } : {}),
+        };
+      });
+    }, F.PANEL);
+    res.json({ url: page.url(), tabs: await F.readTabStates(page), fields });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 /**
  * GET /api/debug/page — report what the live Playwright page currently shows.

@@ -29,6 +29,9 @@ const SHOPSY_VERTICAL = {
   // Under "Combo Sets", not under Shopsy's own "Co-ords and Combo Sets" branch where
   // Flipkart files it. Read off the complete category tree on 2026-10-12.
   'Kids Apparel Combo': 'Shopsy / Combo Sets / Shopsy Kids Apparel Combo',
+  // Same branch name on both storefronts. Read off the complete category tree on
+  // 2026-10-12 and discovered live on 2026-10-16.
+  'Apron': 'Shopsy / Kitchen & Table Linen / Shopsy Apron',
 };
 
 /** What the vertical is called on `partner`. */
@@ -178,6 +181,26 @@ const SHOPSY_FIELDS = {
       'Secondary Product Type': { from: 'Product Description', to: 'Additional Description' },
       Pattern: { from: 'Product Description', to: 'Additional Description' },
       Occasion: { from: 'Product Description', to: 'Additional Description' },
+    },
+  },
+  /**
+   * Discovered on both storefronts 2026-10-16 — see content/APRON_SCHEMA.json and
+   * its SHOPSY_ twin.
+   *
+   * Shopsy demotes Style, Pattern and Closure from mandatory on Product Description
+   * to optional on Additional Description. All three labels are unique on the form,
+   * but the moves are qualified anyway, as every new rule should be. Material drops
+   * Velvet on Shopsy, a value no apron path uses.
+   */
+  'Apron': {
+    rename: { 'Items Included': 'Sales Package' },
+    drop: [],
+    retype: {},
+    substitute: {},
+    move: {
+      Style: { from: 'Product Description', to: 'Additional Description' },
+      Pattern: { from: 'Product Description', to: 'Additional Description' },
+      Closure: { from: 'Product Description', to: 'Additional Description' },
     },
   },
 };

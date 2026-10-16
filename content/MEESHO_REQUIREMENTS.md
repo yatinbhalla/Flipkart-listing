@@ -20,6 +20,7 @@ Field schemas: `content/MEESHO_*_SCHEMA.json`.
 | Blanket | Home & Living > Baby Care > Baby Blanket > Baby Blanket |
 | Hanging Organizers | Home & Kitchen > Home Decor > Decorative Accessories > Wall Decor & Hangings |
 | Bath Linen Set | Home & Kitchen > Home Furnishings > Bathroom Linen > Hand & Face Towels |
+| Apron | Home & Kitchen > Home Furnishings > Kitchen Linens > Aprons (Generic Name "Aprons", Cotton, HSN 630492, GST 5%) |
 
 ## Field values
 
