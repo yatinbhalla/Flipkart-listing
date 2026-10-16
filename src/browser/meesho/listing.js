@@ -116,11 +116,22 @@ export function createFiller(page, log) {
     }
     const wanted = (Array.isArray(value) ? value : [value]).map(String);
     let offered = [];
-    for (const v of wanted) {
+    // A second try per value, but only when the list never rendered. On a slow form
+    // (111s of fields against the usual 43) Country Of Origin opened nothing within
+    // the wait and the listing was refused over "India" — a value the same form had
+    // accepted on the two listings before it. A list that rendered without the value
+    // is a real miss and is not retried.
+    const tries = wanted.flatMap((v) => [v, v]);
+    for (let t = 0; t < tries.length; t++) {
+      const v = tries[t];
+      const retry = t % 2 === 1;
+      if (retry && offered.length) continue;
+      if (retry) log(`  ↻ ${what}: the list did not open — trying again`);
+      offered = [];
       try {
         await page.locator(sel).first().click({ timeout: 15000 });
         // The list is what we are waiting for, so wait for the list.
-        await appears(page, '[role="listbox"], ul.MuiMenu-list, .MuiAutocomplete-listbox', 6000);
+        await appears(page, '[role="listbox"], ul.MuiMenu-list, .MuiAutocomplete-listbox', retry ? 10000 : 6000);
 
         const box = page.locator(SEARCH_BOX).first();
         if (await box.isVisible().catch(() => false)) {

@@ -748,15 +748,21 @@ export async function uploadImage(page, index, filePath) {
 
     // Poll rather than trust the response: the tick appears a moment after the
     // upload call returns, and returning early is what let the following tab
-    // switch save the form before the image had landed.
-    for (let i = 0; i < 10; i++) {
+    // switch save the form before the image had landed. The second attempt waits
+    // longer: a Shopsy variant's slot 2 ticked only after the first ~5s window.
+    for (let i = 0; i < (attempt ? 30 : 10); i++) {
       const st = await slotState(page, index);
       if (st.filled) return;
       await settle(page, 500);
     }
   }
 
+  // One last look before failing. This used to throw unconditionally, and on
+  // 2026-10-17 it failed a Shopsy variation over a slot whose own report, quoted
+  // in the error, read icons=[fa-trash,fa-check] — filled. The image had landed
+  // after the poll gave up.
   const st = await slotState(page, index);
+  if (st.filled) return;
   throw new Error(
     `Image slot ${index + 1} (${IMAGE_SLOTS[index] || 'slot ' + index}) is still empty after ` +
       `two upload attempts — ${st.note}. File: ${String(filePath).split(/[\/]/).pop()}`,
