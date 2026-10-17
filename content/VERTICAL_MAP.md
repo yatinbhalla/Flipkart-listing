@@ -21,7 +21,7 @@ Catalogues saved 2026-10-12: Flipkart 3,954 verticals, Shopsy 1,600, Meesho 3,78
 
 | Product | Flipkart | Shopsy | Meesho |
 |---|---|---|---|
-| **Baby clothing set** (cap, jacket, bib, pyjamas) | Clothing / Co-ords and Combo Sets / Kids Apparel Combo `#7482` | Shopsy / Combo Sets / Shopsy Kids Apparel Combo `#5638` | Kids & Toys > Kids Clothing > Boys Clothing Sets > Clothing Set `#10284` (yellow). Girls Clothing Sets > Clothing Set `#10285` (pink) |
+| **Baby clothing set** (cap, jacket, bib, pyjamas) | Clothing / Co-ords and Combo Sets / Kids Apparel Combo `#7482` | Shopsy / Combo Sets / Shopsy Kids Apparel Combo `#5638` | Kids & Toys > Kids Clothing > Boys Clothing Sets > Clothing Set `#10284` (yellow, sky blue). Girls Clothing Sets > Clothing Set `#10285` (pink) |
 | Baby hooded towel | Baby Care / Bath Care, Diapering & Potty / Bath Towels `#430` | Shopsy / Bathing Accessories / Shopsy Bath Towel | Home & Living > Baby Care > Baby Towels > Baby Towels `#11029` |
 | Hand / face towel | Health & Beauty / Bath and Spa / Bath Towels `#407` | Shopsy / Bathing Accessories / Shopsy Bath Towel | Home & Kitchen > Home Furnishings > Bathroom Linen > Hand & Face Towels |
 | Bath linen set | Home Furnishing / Bathing Accessories / Bath Linen Set `#448` | Shopsy / Bathing Accessories / Shopsy Bath Linen Set | (not mapped yet) |
@@ -31,6 +31,7 @@ Catalogues saved 2026-10-12: Flipkart 3,954 verticals, Shopsy 1,600, Meesho 3,78
 | Aasan / prayer mat | Home Furnishing / Floor Coverings / Mat `#1802` | Shopsy / Baby Bedding & Gear / Shopsy Mat `#5366` | Home & Kitchen > Home Furnishings > Carpets & Rugs > Pooja Mats |
 | Kitchen apron (quilted, floral print) | Home & Kitchen Accessories / Kitchen & Table Linen / Apron `#2785` | Shopsy / Kitchen & Table Linen / Shopsy Apron `#5375` | Home & Kitchen > Home Furnishings > Kitchen Linens > Aprons `#13342` |
 | Prayer kit | Home Decor / Festival Supplies / Prayer Kit `#1746` | Shopsy / Festival Supplies / Shopsy Prayer Kit | (not mapped yet) |
+| Fridge top cover (quilted, with side pockets) | Home & Kitchen Accessories / Appliance Accessories / Appliance Cover `#50` (Type: Refrigerator; variant axis Color only) | Shopsy / Appliance Accessories / Shopsy Appliance Cover `#5387` (variant axis Brand Color only, so variants carry `shopsyAxis`) | Home & Kitchen > Home Furnishings > Appliance Cover > Appliance Cover `#12803` (Type: Fridge Cover). Not Home Decor > Appliance Covers > Fridge Cover `#13586`: its required Set offers only combos |
 
 `#n` is the portal's own vertical or category id, from the saved catalogues.
 

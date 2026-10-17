@@ -32,6 +32,8 @@ const SHOPSY_VERTICAL = {
   // Same branch name on both storefronts. Read off the complete category tree on
   // 2026-10-12 and discovered live on 2026-10-16.
   'Apron': 'Shopsy / Kitchen & Table Linen / Shopsy Apron',
+  // Same branch name on both storefronts. Discovered live on 2026-10-17.
+  'Appliance Cover': 'Shopsy / Appliance Accessories / Shopsy Appliance Cover',
 };
 
 /** What the vertical is called on `partner`. */
@@ -202,6 +204,29 @@ const SHOPSY_FIELDS = {
       Pattern: { from: 'Product Description', to: 'Additional Description' },
       Closure: { from: 'Product Description', to: 'Additional Description' },
     },
+  },
+  /**
+   * Discovered on both storefronts 2026-10-17 — see
+   * content/APPLIANCE_COVER_SCHEMA.json and its SHOPSY_ twin.
+   *
+   * Nothing moves tab. Shopsy simply lacks several of Flipkart's optional Additional
+   * Description attributes: Pattern, Wash Care Instructions, Compatible Appliance
+   * Capacity and every warranty field. Type offers fewer appliances, but Refrigerator
+   * is on both.
+   */
+  'Appliance Cover': {
+    rename: { 'Items Included': 'Sales Package' },
+    drop: [
+      'Pattern',
+      'Wash Care Instructions',
+      'Warranty Summary',
+      'Warranty Service Type',
+      'Covered in Warranty',
+      'Not Covered in Warranty',
+    ],
+    retype: {},
+    substitute: {},
+    move: {},
   },
 };
 

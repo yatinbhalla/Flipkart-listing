@@ -21,6 +21,7 @@ Field schemas: `content/MEESHO_*_SCHEMA.json`.
 | Hanging Organizers | Home & Kitchen > Home Decor > Decorative Accessories > Wall Decor & Hangings |
 | Bath Linen Set | Home & Kitchen > Home Furnishings > Bathroom Linen > Hand & Face Towels |
 | Apron | Home & Kitchen > Home Furnishings > Kitchen Linens > Aprons (Generic Name "Aprons", Cotton, HSN 630492, GST 5%) |
+| Appliance Cover (fridge top) | Home & Kitchen > Home Furnishings > Appliance Cover > Appliance Cover (Generic Name "Appliance Cover", Type "Fridge Cover", Cotton, Checked, HSN 630492, GST 5%). Not Home Decor > Appliance Covers > Fridge Cover: its required `set` offers only combos (Fridge Top+Fridge Mat, Fridge Top+Handle Cover, …) with no single fridge top, read 2026-10-17 |
 
 ## Field values
 

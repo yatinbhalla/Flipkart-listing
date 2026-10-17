@@ -30,6 +30,31 @@ const router = express.Router();
 
 const SHARED_SLOTS = ['img2', 'img3', 'img4', 'img5'];
 
+/**
+ * The variants and matrix columns as one storefront sees them.
+ *
+ * The two storefronts do not always offer the same variant axis on a vertical.
+ * Appliance Cover varies by Color on Flipkart but only by Brand Color on Shopsy
+ * (both read off the live Variant tab on 2026-10-18), so a variant can name a
+ * `shopsyAxis` and `shopsyAxisValue` to use there instead. The axis column of the
+ * matrix is a locked label, and a column entry for it stalls the run, so the
+ * column of whichever axis is in use is dropped from the ones filled. A path can
+ * then list both axes as columns and each storefront fills the one it can edit.
+ */
+export function variantsFor(variants, columns, storefront) {
+  const swapped =
+    storefront === 'shopsy'
+      ? variants.map((v) =>
+          v.shopsyAxis ? { ...v, axis: v.shopsyAxis, axisValue: v.shopsyAxisValue } : v,
+        )
+      : variants;
+  const axes = new Set(swapped.map((v) => v.axis).filter(Boolean));
+  return {
+    variants: swapped,
+    columns: columns ? columns.filter((c) => !axes.has(c.label)) : null,
+  };
+}
+
 /** The path's reused images, with any run-scoped overrides applied. */
 async function resolveShared(pathId, overrides = {}) {
   const shared = await sharedImagePaths(pathId);
@@ -443,8 +468,9 @@ router.post('/', async (req, res) => {
         // This listing's slice of the batch: the i-th Front View for each variant.
         const listingVariantImages = {};
         for (const v of imageVariants) listingVariantImages[v.key] = variantFronts[v.key][i];
+        const { variants: onStorefront, columns } = variantsFor(resolved, path.variantColumns, storefront);
         await L.fillVariants(
-          page, resolved, log, path.variantColumns || null, listingVariantImages, shared, variantShared,
+          page, onStorefront, log, columns, listingVariantImages, shared, variantShared,
         );
 
         const { states, problems, ready } = await L.verifyReady(page);
