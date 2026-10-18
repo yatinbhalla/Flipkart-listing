@@ -58,6 +58,29 @@ export async function hasColumn(page, name, occurrence = 0) {
   return colIndex(page, name, occurrence).then(() => true).catch(() => false);
 }
 
+/**
+ * Does this cell hold anything to fill — a text box, a dropdown or a pill widget?
+ *
+ * Some columns are locked labels that inherit the parent's value: the axis column,
+ * and on Shopsy the Size column of a Kids Apparel Combo. Typing into one waits out
+ * the full Playwright timeout and then fails the listing, so a column map that is
+ * shared by two storefronts — where the same header is locked on one and editable
+ * on the other — has to check the cell, not just the header.
+ */
+export async function cellHasControl(page, rowIdx, name, occurrence = 0) {
+  const col = await colIndex(page, name, occurrence).catch(() => -1);
+  if (col < 0) return false;
+  return page.evaluate(
+    ({ rowIdx, col }) => {
+      const td = document.querySelectorAll('table tbody tr')[rowIdx]?.children[col];
+      return Boolean(
+        td?.querySelector('input:not([type=hidden]):not([disabled]), textarea, button[class*=DropdownButton], .rti--container'),
+      );
+    },
+    { rowIdx, col },
+  );
+}
+
 /** Tag one cell so we can drive it with real Playwright events. */
 async function cell(page, rowIdx, name, occurrence = 0) {
   const col = await colIndex(page, name, occurrence);

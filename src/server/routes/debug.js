@@ -303,7 +303,16 @@ router.get('/variantrow', async (req, res) => {
           const drop = td.querySelector('button[class*=DropdownButton]');
           const rti = td.querySelector('.rti--container');
           const kind = rti ? 'pills' : drop ? 'dropdown' : area ? 'textarea' : input ? 'input' : 'none';
-          return `${i}: ${headers[i] || '?'} -> ${kind}${input ? ` (val="${String(input.value).slice(0, 14)}")` : ''}`;
+          // What the cell holds, read the way it is shown: pills, the dropdown's
+          // caption ("Select" when empty), or the box's value. Reporting only text
+          // inputs made every dropdown and pill cell look empty, or invisible.
+          const pills = [...td.querySelectorAll('[class*=SmallPillContainer]')].map((p) => p.innerText.trim());
+          const val = pills.length
+            ? pills.join(' | ')
+            : drop
+              ? drop.innerText.trim()
+              : (area || input)?.value ?? (td.innerText || '').trim();
+          return `${i}: ${headers[i] || '?'} -> ${kind} (val="${String(val).slice(0, 40)}")`;
         }),
       };
     }, rowIdx);

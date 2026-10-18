@@ -820,6 +820,33 @@ export async function fillVariants(
       log(`  ↻ Re-entered dropped fields on row ${row} (${v.axisValue || v.label}): ${missing.join(', ')}`);
     }
   }
+
+  // A column the path does not name is NOT carried over from the parent. The fridge
+  // cover variants went out with Depth, Sales Package and Other Features empty while
+  // every tab read green, because the tab counters do not count matrix cells — and
+  // Depth is mandatory on Shopsy. Compare each row with the parent and say which
+  // cells it is missing, so the gap is seen at the run, not at QC.
+  const parentRow = await V.readRow(page, 0).catch(() => null);
+  const filled = (val) =>
+    val != null && !['', '—', '-', 'select', '0 pill(s)'].includes(String(val).trim().toLowerCase());
+  if (parentRow) {
+    for (let i = 1; i < variants.length; i++) {
+      const v = variants[i];
+      const hit = afterSave && v.axisValue ? afterSave.find(v.axisValue) : undefined;
+      const row = hit === undefined ? rowFor(v, i) : hit;
+      const cells = await V.readRow(page, row).catch(() => null);
+      if (!cells) continue;
+      const gaps = Object.keys(parentRow).filter(
+        (key) => key !== axisName && filled(parentRow[key]) && !filled(cells[key]),
+      );
+      if (gaps.length) {
+        log(
+          `  ⚠ Row ${row} (${v.axisValue || v.label}) is empty where the parent has a value: ` +
+            `${gaps.join(', ')}. Add them to the path's variantColumns.`,
+        );
+      }
+    }
+  }
 }
 
 /**
@@ -837,6 +864,7 @@ async function fillVariantRowFromMap(page, i, v, columns, log) {
     String(path).split('.').reduce((acc, key) => (acc == null ? undefined : acc[key]), data);
 
   const skipped = [];
+  const locked = [];
   for (const col of columns) {
     const value = col.from ? valueAt(v, col.from) : col.value;
     if (value === undefined || value === null || value === '' ||
@@ -846,6 +874,12 @@ async function fillVariantRowFromMap(page, i, v, columns, log) {
     const at = col.at || 0;
     if (!(await V.hasColumn(page, col.label, at))) {
       skipped.push(col.label);
+      continue;
+    }
+    // A header can exist with nothing under it to fill — an axis or inherited
+    // column. Typing into one stalls until the timeout and fails the listing.
+    if (!(await V.cellHasControl(page, i, col.label, at))) {
+      locked.push(col.label);
       continue;
     }
     // Name every cell as it is entered. Without this a stalled row is a silent
@@ -870,6 +904,7 @@ async function fillVariantRowFromMap(page, i, v, columns, log) {
     }
   }
   if (skipped.length) log(`  · row ${i}: no such column, skipped — ${skipped.join(', ')}`);
+  if (locked.length) log(`  · row ${i}: locked, inherits the parent — ${locked.join(', ')}`);
 }
 
 async function fillVariantRow(page, i, v) {
