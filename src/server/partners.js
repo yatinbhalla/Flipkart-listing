@@ -297,3 +297,35 @@ export function adaptFieldMap(fieldMap, vertical, partner) {
   }
   return out;
 }
+
+/**
+ * Why `path` cannot be listed on Shopsy, or null when it can.
+ *
+ * Shopsy support is knowledge this module holds rather than a flag on the path: a
+ * vertical needs both a Shopsy name and a set of field rules, and a vertical that
+ * has neither is simply Flipkart-only. Without this the run found out by opening
+ * the form and throwing partway through, which reads as a failure rather than as
+ * the plain fact that the product is not sold there.
+ *
+ * Deliberately mirrors what the run actually does: a path that pins its own
+ * `shopsyVerticalPath` never consults the name table, so neither does this.
+ */
+export function shopsyBlocker(path) {
+  const name = path?.name ? `"${path.name}"` : 'This path';
+  if (!path?.fields || !Object.keys(path.fields).length) {
+    return `${name} has no field map, so there is nothing to fill on Shopsy.`;
+  }
+  if (!path.shopsyVerticalPath) {
+    try {
+      verticalFor(path.vertical, 'shopsy');
+    } catch (err) {
+      return `${err.message} ${name} can be listed on Flipkart only.`;
+    }
+  }
+  try {
+    adaptFieldMap(path.fields, path.vertical, 'shopsy');
+  } catch (err) {
+    return `${err.message} ${name} can be listed on Flipkart only.`;
+  }
+  return null;
+}

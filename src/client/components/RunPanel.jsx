@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 // One definition, shared with the run route — a client-side copy of either of these
 // silently drifted once already and cost a run.
 import { MAX_BATCH, variantNeedsImage } from '../../server/constants.js';
+import { shopsyBlocker } from '../../server/partners.js';
 
 /**
  * Deliberately permissive. A MIME-only accept list hides files the app can actually
@@ -44,6 +45,11 @@ export default function RunPanel({ path, running, progress, onStarted }) {
   // so a selection can be repeated to produce several listings per image.
   const cycles = repeatOn ? Math.min(Math.max(Number(repeat) || 1, 1), 99) : 1;
   const totalListings = fronts.length * cycles;
+
+  // The same answer the run route gives, asked before the button rather than after:
+  // a path whose vertical Shopsy has no rules for gets as far as uploading its
+  // images before failing, so saying so here saves a part-built draft.
+  const shopsyRefusal = path ? shopsyBlocker(path) : null;
 
   // Every variant must ship the same number of photos, or the product page shows a
   // different count per pack size. Counted here so it is visible before the run
@@ -449,12 +455,8 @@ export default function RunPanel({ path, running, progress, onStarted }) {
             needed before it can be listed there.
           </p>
         )}
-        {partner.includes('shopsy') && !path.fields && (
-          <p className="mt-2 text-xs text-amber-700">
-            This path has no field map, so it can only be listed on Flipkart. Shopsy uses
-            different labels (Items Included is “Sales Package”, Color becomes “Color For
-            Refiner”).
-          </p>
+        {partner.includes('shopsy') && shopsyRefusal && (
+          <p className="mt-2 text-xs text-amber-700">{shopsyRefusal}</p>
         )}
       </div>
 

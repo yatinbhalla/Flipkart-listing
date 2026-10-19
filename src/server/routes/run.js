@@ -21,7 +21,7 @@ import { getSession } from '../../browser/session.js';
 import * as L from '../../browser/listing.js';
 import { MAX_BATCH, variantNeedsImage } from '../constants.js';
 import { describeListing, listingSkus, fitModelName } from '../format.js';
-import { PARTNERS, verticalFor } from '../partners.js';
+import { PARTNERS, verticalFor, shopsyBlocker } from '../partners.js';
 import { runMeeshoBatch, meeshoBlocker } from './meesho.js';
 
 export { variantNeedsImage };
@@ -244,6 +244,15 @@ router.post('/', async (req, res) => {
   // handover means a Flipkart batch has already gone out and the run then fails.
   if (storefronts.includes('meesho')) {
     const blocker = meeshoBlocker(path);
+    if (blocker) return res.status(400).json({ error: blocker });
+  }
+
+  // Shopsy for the same reason, and it costs more to find out late here: a path
+  // that pins its own shopsyVerticalPath gets past the vertical and the brand, so
+  // the throw lands in fillTabs — after five images have been uploaded, leaving a
+  // part-built draft behind on every attempt.
+  if (storefronts.includes('shopsy')) {
+    const blocker = shopsyBlocker(path);
     if (blocker) return res.status(400).json({ error: blocker });
   }
 
