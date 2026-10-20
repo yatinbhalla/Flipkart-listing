@@ -52,7 +52,7 @@ const rotate = (arr, start, n) =>
   Array.from({ length: Math.min(n, arr.length) }, (_, k) => arr[(start + k) % arr.length]);
 
 /** The nouns and verbs that differ by what the product actually is. */
-function vocabulary(path, v) {
+export function vocabulary(path, v) {
   const vertical = path.vertical;
   if (vertical === 'Hanging Organizers') {
     return {

@@ -15,7 +15,7 @@ import { PRICE_JITTER_BELOW, PRICE_JITTER_ABOVE } from '../../server/price.js';
 const IMAGE_ACCEPT = 'image/*,.jpg,.jpeg,.jpe,.jfif,.png,.webp,.avif,.tif,.tiff,.heic,.heif,.bmp';
 
 export default function RunPanel({ path, running, progress, onStarted }) {
-  const [fronts, setFronts] = useState([]);        // [{ path, name, width, height, upscaled }]
+  const [uploaded, setFronts] = useState([]);      // [{ path, name, width, height, upscaled }]
   const [variantImages, setVariantImages] = useState({});
   const [preview, setPreview] = useState(null);
   const [sendToQc, setSendToQc] = useState(false);
@@ -31,11 +31,80 @@ export default function RunPanel({ path, running, progress, onStarted }) {
   const [partner, setPartner] = useState(['flipkart']);
   const [stopping, setStopping] = useState(false);
 
+  // Front images are either uploaded (as they always were) or generated from one of
+  // the path's own photos. Everything downstream takes a list of file paths, so the
+  // two modes meet at `fronts` and nothing else has to know which was used.
+  const [mode, setMode] = useState('upload');
+  const [generated, setGenerated] = useState([]);
+  const [genCount, setGenCount] = useState(5);
+  const [approved, setApproved] = useState({});
+  const [genBusy, setGenBusy] = useState(false);
+
   // Clear it when the run ends, or the next run opens with the Stop button already
   // greyed out and reading "Stopping…".
   useEffect(() => {
     if (!running) setStopping(false);
   }, [running]);
+
+  // Switching path or mode must not carry another path's pictures across.
+  useEffect(() => {
+    setGenerated([]);
+    setApproved({});
+  }, [path.id, mode]);
+
+  async function generate() {
+    setGenBusy(true);
+    setError('');
+    try {
+      const res = await fetch('/api/images/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pathId: path.id, count: genCount }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not generate images.');
+      setGenerated(data.images || []);
+      // Pre-tick the ones that passed; the seller unticks rather than ticks fifty.
+      setApproved(Object.fromEntries((data.images || []).map((im, i) => [i, Boolean(im.ok)])));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setGenBusy(false);
+    }
+  }
+
+  async function regenerate(i) {
+    setGenBusy(true);
+    try {
+      const res = await fetch('/api/images/regenerate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pathId: path.id,
+          index: i,
+          others: generated.filter((_, n) => n !== i).map((im) => im.file).filter(Boolean),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not regenerate.');
+      setGenerated((list) => list.map((im, n) => (n === i ? data.image : im)));
+      setApproved((a) => ({ ...a, [i]: Boolean(data.image.ok) }));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setGenBusy(false);
+    }
+  }
+
+  // The approved generated images, in the same shape the upload route returns, so
+  // the run call below cannot tell the difference.
+  const approvedFronts = generated
+    .map((im, i) => (approved[i] && im.file ? { path: im.file, name: im.name } : null))
+    .filter(Boolean);
+
+  // The one list the rest of this component works from. Both modes produce
+  // `{ path, name }`, which is what /api/run wants, so nothing below here changes.
+  const fronts = mode === 'generate' ? approvedFronts : uploaded;
 
   const imageVariants = path.variants.filter(variantNeedsImage);
   // A per-listing photo can't vary across a batch, so those paths list one at a time.
@@ -199,7 +268,110 @@ export default function RunPanel({ path, running, progress, onStarted }) {
               `N photos each produces N listings, every one carrying all ${path.variants.length} variants.`}
         </p>
 
-        {!batchAllowed && (
+        <div className="mb-3 flex gap-1 rounded-lg bg-slate-100 p-1 text-xs">
+          {[
+            ['upload', 'Upload images'],
+            ['generate', 'Generate images'],
+          ].map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              disabled={busy || running || genBusy}
+              onClick={() => setMode(key)}
+              className={`flex-1 rounded px-2 py-1 ${
+                mode === key ? 'bg-white font-medium shadow-sm' : 'text-slate-500'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {mode === 'generate' && (
+          <div className="mb-3">
+            <p className="mb-2 text-xs text-slate-500">
+              Each image is made by re-photographing one of this path's own saved photos in a
+              new setting, so the product itself stays exactly as it really is. Check every
+              one before running — you are responsible for what the listing shows.
+            </p>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-slate-600">How many</label>
+              <input
+                type="number"
+                min="1"
+                max={MAX_BATCH}
+                value={genCount}
+                disabled={genBusy || running}
+                onChange={(e) => setGenCount(Math.min(Math.max(Number(e.target.value) || 1, 1), MAX_BATCH))}
+                className="w-16 rounded border border-slate-300 px-2 py-1 text-xs"
+              />
+              <button
+                type="button"
+                onClick={generate}
+                disabled={genBusy || running}
+                className="rounded bg-slate-900 px-3 py-1 text-xs font-medium text-white disabled:opacity-40"
+              >
+                {genBusy ? 'Generating…' : 'Generate'}
+              </button>
+              {generated.length > 0 && (
+                <span className="text-xs text-slate-500">
+                  {approvedFronts.length} of {generated.length} approved
+                </span>
+              )}
+            </div>
+
+            {generated.length > 0 && (
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                {generated.map((im, i) => (
+                  <div key={`${im.name || 'err'}-${i}`} className="rounded border border-slate-200 p-1">
+                    {im.name ? (
+                      <img
+                        src={`/api/images/file/${encodeURIComponent(im.name)}?w=256`}
+                        alt={`generated ${i + 1}`}
+                        className="aspect-square w-full rounded object-cover"
+                      />
+                    ) : (
+                      <div className="flex aspect-square w-full items-center justify-center rounded bg-rose-50 p-1 text-[10px] text-rose-700">
+                        {im.error || 'failed'}
+                      </div>
+                    )}
+                    {(im.flags || []).map((f, n) => (
+                      <div
+                        key={n}
+                        className={`mt-1 text-[10px] leading-tight ${
+                          f.level === 'error' ? 'text-rose-700' : 'text-amber-700'
+                        }`}
+                      >
+                        {f.text}
+                      </div>
+                    ))}
+                    <div className="mt-1 flex items-center justify-between">
+                      <label className="flex items-center gap-1 text-[11px]">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(approved[i])}
+                          disabled={!im.file || genBusy}
+                          onChange={(e) => setApproved((a) => ({ ...a, [i]: e.target.checked }))}
+                        />
+                        use
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => regenerate(i)}
+                        disabled={genBusy || running}
+                        className="text-[11px] text-slate-500 underline disabled:opacity-40"
+                      >
+                        regenerate
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {!batchAllowed && mode === 'upload' && (
           <div className="mb-1 text-sm font-medium">
             {path.variants[0].label || 'Parent'}{' '}
             <span className="font-normal text-slate-400">(main listing)</span>
@@ -210,14 +382,16 @@ export default function RunPanel({ path, running, progress, onStarted }) {
             per variant produce N listings, each carrying the full variant set — so
             the parent picker and the per-variant pickers all take a selection, and
             the counts simply have to match. */}
-        <input
-          type="file"
-          multiple
-          accept={IMAGE_ACCEPT}
-          disabled={busy || running}
-          onChange={(e) => e.target.files.length && pickFronts(e.target.files)}
-          className="text-xs file:mr-2 file:rounded file:border-0 file:bg-slate-100 file:px-2 file:py-1"
-        />
+        {mode === 'upload' && (
+          <input
+            type="file"
+            multiple
+            accept={IMAGE_ACCEPT}
+            disabled={busy || running}
+            onChange={(e) => e.target.files.length && pickFronts(e.target.files)}
+            className="text-xs file:mr-2 file:rounded file:border-0 file:bg-slate-100 file:px-2 file:py-1"
+          />
+        )}
 
         {fronts.length > 0 && (
           <div className="mt-3">

@@ -11,6 +11,7 @@ import debugRouter from './routes/debug.js';
 import sessionRouter from './routes/session.js';
 import discoverRouter from './routes/discover.js';
 import meeshoRouter from './routes/meesho.js';
+import imagesRouter from './routes/images.js';
 import { setAiRecovery } from '../browser/form.js';
 import { recoverClick } from '../ai/recover.js';
 import { listSkus, listPaths, savePath } from './store.js';
@@ -103,6 +104,7 @@ app.use('/api/debug', debugRouter);
 app.use('/api/session', sessionRouter);
 app.use('/api/discover', discoverRouter);
 app.use('/api/meesho', meeshoRouter);
+app.use('/api/images', imagesRouter);
 app.get('/api/skus', async (_req, res) => res.json(await listSkus()));
 app.get('/api/health', (_req, res) => {
   const key = process.env.GEMINI_API_KEY;
