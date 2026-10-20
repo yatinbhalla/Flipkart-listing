@@ -3,13 +3,17 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 // Same fallback strategy as the Meesho lister: free-tier model availability varies
 // by account and region, so try the list in order and cache the first that works.
 // Lite variants come first — the most generous free quota.
+// gemini-2.5-flash-lite and gemini-2.5-flash used to lead this list and are gone:
+// both now answer 404 "no longer available to new users", pointing at
+// gemini-3.5-flash-lite instead. The chain still worked because flash-latest is in
+// it, so nothing broke — every copy call simply 404'd through two models first.
+// The two marked verified were called successfully on this account on 2026-10-20.
 const MODEL_FALLBACK = [
-  'gemini-2.5-flash-lite',
-  'gemini-2.0-flash-lite',
+  'gemini-3.5-flash-lite', // verified
   'gemini-flash-lite-latest',
-  'gemini-2.5-flash',
+  'gemini-2.0-flash-lite',
+  'gemini-flash-latest', // verified
   'gemini-2.0-flash',
-  'gemini-flash-latest',
 ];
 
 const MAX_RETRIES = 2;
