@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 // silently drifted once already and cost a run.
 import { MAX_BATCH, variantNeedsImage } from '../../server/constants.js';
 import { shopsyBlocker } from '../../server/partners.js';
+import { PRICE_JITTER_BELOW, PRICE_JITTER_ABOVE } from '../../server/price.js';
 
 /**
  * Deliberately permissive. A MIME-only accept list hides files the app can actually
@@ -393,7 +394,10 @@ export default function RunPanel({ path, running, progress, onStarted }) {
             ))}
             <p className="pt-1 text-[11px] text-slate-400">
               A fresh SKU is allocated per listing, so a batch of {fronts.length || 'N'} gets{' '}
-              {fronts.length || 'N'} distinct sets.
+              {fronts.length || 'N'} distinct sets. The selling price shown is one draw, not the
+              figure on the path: every listing prices itself between ₹{PRICE_JITTER_BELOW} under
+              and ₹{PRICE_JITTER_ABOVE} over, so a batch does not go out at one repeated price.
+              MRP is left alone.
             </p>
           </div>
         )}

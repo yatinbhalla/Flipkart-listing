@@ -11,6 +11,7 @@ import { getPath, allocateSku, sharedImagePaths, resolveVariant } from '../store
 import { getMeeshoSession } from '../../browser/meesho/session.js';
 import { createListing } from '../../browser/meesho/listing.js';
 import { MAX_BATCH } from '../constants.js';
+import { jitterPrice } from '../price.js';
 
 const router = express.Router();
 
@@ -96,12 +97,20 @@ export async function runMeeshoBatch({ path, pathId, fronts, submit, log }) {
         // A SKU per listing, so every catalogue in the batch is unique.
         const variant = await buildOne(path, i);
         sku = variant.sku;
+
+        // Meesho carries its own price, so it is jittered separately from the
+        // Flipkart one rather than sharing a figure — two marketplaces drifting in
+        // step would be its own kind of pattern. Copied onto a per-listing path so
+        // the loaded path keeps the seller's number for the listing after this.
+        const price = jitterPrice(path.meesho.sellingPrice, variant.mrp);
+        const priced = { ...path, meesho: { ...path.meesho, sellingPrice: price } };
+
         broadcast({ type: 'event', event: 'item-start', index: i, total: fronts.length, sku });
-        log(`── ${label} · ${sku} ₹${path.meesho.sellingPrice} ──`);
+        log(`── ${label} · ${sku} ₹${price} ──`);
 
         throwIfStopped();
         const result = await createListing(page, {
-          path,
+          path: priced,
           variant,
           sku,
           images: { front: fronts[i], extras },

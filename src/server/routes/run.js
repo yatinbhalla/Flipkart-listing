@@ -22,6 +22,7 @@ import * as L from '../../browser/listing.js';
 import { MAX_BATCH, variantNeedsImage } from '../constants.js';
 import { describeListing, listingSkus, fitModelName } from '../format.js';
 import { PARTNERS, verticalFor, shopsyBlocker } from '../partners.js';
+import { jitterPrice } from '../price.js';
 import { runMeeshoBatch, meeshoBlocker } from './meesho.js';
 
 export { variantNeedsImage };
@@ -108,6 +109,12 @@ async function buildListing(path, index = 0) {
       );
     }
     const v = resolveVariant(path, variant);
+    // Each listing prices itself a few rupees either side of the seller's figure,
+    // so a batch does not go out as fifty identical prices. Capped at the MRP,
+    // which the form refuses to be beaten. Every variant row draws its own, which
+    // is safe because no two variants on a path sit closer together than the
+    // spread — checked across all of them before this went in.
+    v.sellingPrice = jitterPrice(v.sellingPrice, v.mrp);
     v.sku = await allocateSku(variant.skuPattern || path.skuPattern);
     v.modelNumber = v.sku; // Model Number mirrors the SKU exactly.
     const pool = variant.copyPool?.length ? variant.copyPool : [variant.copy];
