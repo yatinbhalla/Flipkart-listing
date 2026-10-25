@@ -48,6 +48,39 @@ export function inchOptions(value) {
   return [exact, String(Math.round(n))];
 }
 
+/**
+ * The Product Weight values to try, each with the unit it is stated in. Pooja Mats'
+ * list starts at 0.25 kg and climbs in quarters, so 150 g is not an exact kg option;
+ * grams come first so the true weight wins wherever the list carries it, then the
+ * exact kg, the next 0.1 kg up and the nearest quarter kg.
+ */
+export function weightChoices(grams) {
+  const g = Number(grams);
+  if (!Number.isFinite(g) || g <= 0) return [];
+  const kg = (n) => String(Number(n.toFixed(2)));
+  const values = [
+    { value: String(Math.round(g)), unit: 'g' },
+    { value: kg(g / 1000), unit: 'kg' },
+    { value: kg(Math.ceil(g / 100) / 10), unit: 'kg' },
+    { value: kg(Math.max(0.25, Math.round(g / 250) / 4)), unit: 'kg' },
+  ];
+  return values.filter((c, i) => values.findIndex((d) => d.value === c.value && d.unit === c.unit) === i);
+}
+
+/** Pick the first weight the list offers, then the unit that value is in. */
+async function pickProductWeight(f, choices) {
+  for (const { value, unit } of choices) {
+    if ((await f.pick('#product_weight', value, `product weight (${unit})`, { required: false })) === null) continue;
+    await f.pick('#weight_unit', unit, 'weight unit');
+    return;
+  }
+  f.problems.push(
+    choices.length
+      ? `product weight — none of ${choices.map((c) => c.value + ' ' + c.unit).join(', ')} offered`
+      : 'product weight — the variant has no weightGrams',
+  );
+}
+
 /** Meesho rejects a description over this, and the stored copy targets Flipkart's 5000. */
 export const DESCRIPTION_CAP = 1400;
 
@@ -417,8 +450,20 @@ export async function createListing(page, { path: cfg, variant, sku, images, sub
 
   // `#weight` is the product's own weight on most categories, but on Kids Clothing
   // Set it is the size row's baby-weight band ("3-5"), so a path can say which.
-  await f.pick('#weight', M.weight ?? ['0.1', '0.2'], 'weight');
-  await f.pick('#weight_unit', 'kg', 'weight unit');
+  //
+  // Pooja Mats (and Fridge Cover) call it `#product_weight` instead, and REQUIRE it:
+  // reading only `#weight` logged "skip weight — not in this category", still picked
+  // the unit, and every aasan listing was refused with "Please provide Product
+  // Weight". Its list does not run in 0.1 kg steps either (0.25, 0.5, 0.75 …), so
+  // the default is the variant's own weight, in grams first and then in kg.
+  if (await f.has('#weight')) {
+    await f.pick('#weight', M.weight ?? ['0.1', '0.2'], 'weight');
+    await f.pick('#weight_unit', 'kg', 'weight unit');
+  } else if (await f.has('#product_weight')) {
+    await pickProductWeight(f, M.weight ? [{ value: M.weight, unit: 'kg' }] : weightChoices(variant.weightGrams));
+  } else {
+    log('  skip weight — not in this category');
+  }
 
   // Country of origin FIRST: choosing India disables all three importer fields and
   // fills them with "Not Required", so they are never typed into.

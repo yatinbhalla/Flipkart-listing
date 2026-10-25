@@ -264,6 +264,13 @@ Baby Blanket also has no material, pattern, product unit, weight or weight unit 
 all, and its Product Details "Size" carries no asterisk — optional, unlike the
 Table Cloths one which wants "40x60 Inch".
 
+Product Weight is `#weight` on Table Cloths, Wall Decor and Appliance Cover but
+`#product_weight` on Pooja Mats and Fridge Cover, where it is required. Reading only
+`#weight` got every aasan listing refused with *Mandatory field, Please provide
+Product Weight*. The Pooja Mats list runs 0.25, 0.5, 0.75 kg …, so `createListing`
+tries the variant's `weightGrams` in g first, then nearby kg values, and sets
+`#weight_unit` to the unit of the value that was accepted.
+
 ## Reading the errors
 
 The submit banner counts errors without naming them, which costs a run per unknown.
