@@ -149,22 +149,27 @@ export function createFiller(page, log) {
     }
     const wanted = (Array.isArray(value) ? value : [value]).map(String);
     let offered = [];
+    let opened = false;
     // A second try per value, but only when the list never rendered. On a slow form
     // (111s of fields against the usual 43) Country Of Origin opened nothing within
     // the wait and the listing was refused over "India" — a value the same form had
     // accepted on the two listings before it. A list that rendered without the value
-    // is a real miss and is not retried.
+    // is a real miss and is not retried — including a searchable list the typed value
+    // filtered down to nothing, which reads back as no options at all. Judging by the
+    // options alone retried every one of those and logged "the list did not open"
+    // about a list that had.
     const tries = wanted.flatMap((v) => [v, v]);
     for (let t = 0; t < tries.length; t++) {
       const v = tries[t];
       const retry = t % 2 === 1;
-      if (retry && offered.length) continue;
+      if (retry && (offered.length || opened)) continue;
       if (retry) log(`  ↻ ${what}: the list did not open — trying again`);
       offered = [];
+      opened = false;
       try {
         await page.locator(sel).first().click({ timeout: 15000 });
         // The list is what we are waiting for, so wait for the list.
-        await appears(page, '[role="listbox"], ul.MuiMenu-list, .MuiAutocomplete-listbox', retry ? 10000 : 6000);
+        opened = await appears(page, '[role="listbox"], ul.MuiMenu-list, .MuiAutocomplete-listbox', retry ? 10000 : 6000);
 
         const box = page.locator(SEARCH_BOX).first();
         if (await box.isVisible().catch(() => false)) {
@@ -202,9 +207,12 @@ export function createFiller(page, log) {
     }
     // Report the real choices. The submit banner only counts errors, so a miss that
     // does not name its alternatives costs another whole run to identify.
+    // An optional pick is one of several values being tried, and its miss is not a
+    // failure — calling it FAIL read as the listing breaking, and a run was stopped
+    // over a weight that the next value then filled.
     if (required) problems.push(what);
     log(
-      `  FAIL ${what} wanted [${wanted.join(', ')}] | offered: ` +
+      `  ${required ? 'FAIL' : 'not offered:'} ${what} wanted [${wanted.join(', ')}] | offered: ` +
         ([...new Set(offered.map((t) => t.trim()))].slice(0, 20).join(' | ') || '(none seen)'),
     );
     return null;
