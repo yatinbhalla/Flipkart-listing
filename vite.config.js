@@ -19,6 +19,10 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: webPort,
+    // data/ is the server's: run logs, debug captures, the browser profiles. Vite
+    // read every capture's .html as a page and reloaded the UI mid-run, several
+    // times a listing. Nothing the client imports lives there.
+    watch: { ignored: ['**/data/**'] },
     proxy: {
       '/api': `http://localhost:${apiPort}`,
       '/ws': { target: `ws://localhost:${apiPort}`, ws: true },
