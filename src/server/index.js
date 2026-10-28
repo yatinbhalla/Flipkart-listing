@@ -54,7 +54,7 @@ function keepLog(message) {
     .catch(() => {});
 }
 
-wss.on('connection', () => broadcast({ type: 'info', text: 'Connected to Flipkart Lister.' }));
+wss.on('connection', () => broadcast({ type: 'info', text: 'Connected to ListOnce.' }));
 
 // Only one Playwright run at a time — two runs would fight over the same browser
 // profile and the same half-built form.
@@ -147,7 +147,7 @@ async function bootstrap() {
 function onListenError(err) {
   if (err.code === 'EADDRINUSE') {
     console.error(
-      `\n❌  Port ${PORT} is already in use — most likely an older Flipkart Lister ` +
+      `\n❌  Port ${PORT} is already in use — most likely an older ListOnce ` +
         `server is still running. Stop it, then start again:\n` +
         `      npx kill-port ${PORT}\n`,
     );
@@ -163,7 +163,7 @@ bootstrap()
   .catch((err) => console.error('Bootstrap failed:', err.message))
   .finally(() => {
     server.listen(PORT, () => {
-      console.log(`\n✅  Flipkart Lister API on http://localhost:${PORT}`);
+      console.log(`\n✅  ListOnce API on http://localhost:${PORT}`);
       console.log(`   Open the UI at http://localhost:5174\n`);
     });
   });

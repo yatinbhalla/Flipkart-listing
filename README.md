@@ -1,6 +1,6 @@
 <div align="center">
   
-# 🛒 Flipkart Lister
+# 🛒 ListOnce
 
 ### *Drives Flipkart Seller Hub end to end — images, every tab, every variant, straight to QC.*  
 

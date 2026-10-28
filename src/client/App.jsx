@@ -66,11 +66,19 @@ export default function App() {
   return (
     <div className="mx-auto max-w-5xl px-6 py-8">
       <header className="mb-6 flex flex-wrap items-start gap-3">
-        <div className="rounded-lg bg-fk-blue px-2.5 py-1 text-lg font-bold text-fk-yellow">f</div>
+        {/* The same mark as the tab icon, inline so the two cannot drift apart. */}
+        <svg viewBox="0 0 64 64" className="h-9 w-9 shrink-0" role="img" aria-label="ListOnce">
+          <rect width="64" height="64" rx="14" fill="#1E293B" />
+          <rect x="6" y="21" width="22" height="22" rx="6" fill="#F59E0B" />
+          <g fill="#E2E8F0">
+            <rect x="37" y="8" width="21" height="21" rx="6" />
+            <rect x="37" y="35" width="21" height="21" rx="6" />
+          </g>
+        </svg>
         <div>
-          <h1 className="text-xl font-bold text-fk-ink">Flipkart Lister</h1>
+          <h1 className="text-xl font-bold text-fk-ink">ListOnce</h1>
           <p className="text-xs text-slate-500">
-            Drives Seller Hub end to end: images, all four tabs, variants, QC.
+            One set of images and copy, listed across Flipkart, Shopsy and Meesho.
           </p>
         </div>
 

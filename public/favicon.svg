@@ -1,10 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Flipkart Lister">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ListOnce">
   <!--
-    The same mark the app wears in its own header: a yellow lowercase f on Flipkart
-    blue. Drawn as a path rather than set as <text>, because a favicon is rendered
-    with whatever font the machine happens to have and the glyph would shift between
-    browsers; the shape is fixed here so the tab always matches the header.
+    One upload going out to several storefronts — what the app does, drawn rather
+    than spelled. Marketplace-neutral on purpose: it was Flipkart's yellow f, which
+    stopped being true once Shopsy and Meesho arrived and will be wronger still when
+    Amazon does.
+
+    Three blocks and nothing else. A favicon is read at 16px, where one unit of this
+    grid is a quarter of a pixel: a first attempt with three targets and connecting
+    arrows turned into a grey smudge, and a second with two targets still bridged
+    into a C because the arrows filled the gap between them. The arrangement carries
+    the meaning on its own — one amber source, two pale destinations — and survives
+    the downscale because nothing is thinner than 5px of grid or closer than 9 to its
+    neighbour.
   -->
-  <rect width="64" height="64" rx="14" fill="#2874F0"/>
-  <path fill="#FFE11B" d="M40.5 13.2v7.4c-1.6-.5-3-.8-4.3-.8-2.5 0-3.7 1.2-3.7 3.7v3.2h7.3v7.4h-7.3V51h-8.6V34.1h-5.2v-7.4h5.2v-3.6c0-6.6 3.8-10.3 10.6-10.3 2 0 4 .2 6 .4z"/>
+  <rect width="64" height="64" rx="14" fill="#1E293B"/>
+  <rect x="6" y="21" width="22" height="22" rx="6" fill="#F59E0B"/>
+  <g fill="#E2E8F0">
+    <rect x="37" y="8" width="21" height="21" rx="6"/>
+    <rect x="37" y="35" width="21" height="21" rx="6"/>
+  </g>
 </svg>
