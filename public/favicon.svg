@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Flipkart Lister">
+  <!--
+    The same mark the app wears in its own header: a yellow lowercase f on Flipkart
+    blue. Drawn as a path rather than set as <text>, because a favicon is rendered
+    with whatever font the machine happens to have and the glyph would shift between
+    browsers; the shape is fixed here so the tab always matches the header.
+  -->
+  <rect width="64" height="64" rx="14" fill="#2874F0"/>
+  <path fill="#FFE11B" d="M40.5 13.2v7.4c-1.6-.5-3-.8-4.3-.8-2.5 0-3.7 1.2-3.7 3.7v3.2h7.3v7.4h-7.3V51h-8.6V34.1h-5.2v-7.4h5.2v-3.6c0-6.6 3.8-10.3 10.6-10.3 2 0 4 .2 6 .4z"/>
+</svg>
