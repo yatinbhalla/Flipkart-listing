@@ -36,6 +36,24 @@
   **no brand name at all** — not the seller's own brand either.
 - Reusable copy for the 40x60 PVC table cover lives in `TC_BT_40X60.md`.
 
+## What the selling price means (from Yatin, 2026-10-28)
+
+**It is the customer-facing price.** Flipkart shows the figure entered here to the
+buyer and then deducts its shipping charge from it, costed by package size and
+weight — so the seller's settlement is this number minus a charge they do not
+control at listing time.
+
+**Meesho is the exact opposite**: there the figure is the settlement the seller
+wants to receive, and Meesho adds shipping on top for the buyer. See
+`content/MEESHO_REQUIREMENTS.md`. The two numbers are therefore not comparable and
+must never be copied across — which is also why each path stores a separate
+`meesho.sellingPrice` rather than reusing this one.
+
+The practical consequence is in the price jitter (`src/server/price.js`): a listing
+here may draw a few rupees either side of the seller's figure, because that figure
+is what the buyer pays and a small dip only trims margin. On Meesho it draws upward
+only, because dipping below the seller's figure cuts the settlement itself.
+
 ## Field values that stay blank
 - Thickness: leave **empty** (a value inconsistent with pack weight is worse than none).
 - Packer Details must carry the **full address**, not just the business name (Legal Metrology).

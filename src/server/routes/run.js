@@ -99,7 +99,7 @@ async function findDuplicateImages(fronts, shared) {
  * pool[index % size] means those listings go out with different wording instead of
  * the same paragraph repeated, without costing an AI call during the run.
  */
-async function buildListing(path, index = 0) {
+async function buildListing(path, index = 0, storefront = 'flipkart') {
   const out = [];
   for (const variant of path.variants) {
     if (!variant.copy && !variant.copyPool?.length) {
@@ -114,7 +114,11 @@ async function buildListing(path, index = 0) {
     // which the form refuses to be beaten. Every variant row draws its own, which
     // is safe because no two variants on a path sit closer together than the
     // spread — checked across all of them before this went in.
-    v.sellingPrice = jitterPrice(v.sellingPrice, v.mrp);
+    //
+    // The storefront decides the band: here the figure is what the customer pays,
+    // so it may drift both ways. On Meesho it is the seller's settlement and only
+    // drifts up — see JITTER_BANDS.
+    v.sellingPrice = jitterPrice(v.sellingPrice, v.mrp, storefront);
     v.sku = await allocateSku(variant.skuPattern || path.skuPattern);
     v.modelNumber = v.sku; // Model Number mirrors the SKU exactly.
     const pool = variant.copyPool?.length ? variant.copyPool : [variant.copy];
@@ -432,7 +436,7 @@ router.post('/', async (req, res) => {
         throwIfStopped();
 
         // SKUs are allocated per listing, so each one in the batch is unique.
-        const resolved = await buildListing(path, i);
+        const resolved = await buildListing(path, i, storefront);
         const parent = resolved[0];
         broadcast({
           type: 'event',

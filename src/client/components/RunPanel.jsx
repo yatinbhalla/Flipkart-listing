@@ -569,9 +569,11 @@ export default function RunPanel({ path, running, progress, onStarted }) {
             <p className="pt-1 text-[11px] text-slate-400">
               A fresh SKU is allocated per listing, so a batch of {fronts.length || 'N'} gets{' '}
               {fronts.length || 'N'} distinct sets. The selling price shown is one draw, not the
-              figure on the path: every listing prices itself between ₹{PRICE_JITTER_BELOW} under
-              and ₹{PRICE_JITTER_ABOVE} over, so a batch does not go out at one repeated price.
-              MRP is left alone.
+              figure on the path: on Flipkart and Shopsy every listing prices itself between ₹
+              {PRICE_JITTER_BELOW} under and ₹{PRICE_JITTER_ABOVE} over, so a batch does not go
+              out at one repeated price. On Meesho the figure is your settlement rather than the
+              customer's price, so it only ever draws upward — never below what you set. MRP is
+              left alone everywhere.
             </p>
           </div>
         )}

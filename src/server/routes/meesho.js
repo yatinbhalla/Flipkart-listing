@@ -102,7 +102,7 @@ export async function runMeeshoBatch({ path, pathId, fronts, submit, log }) {
         // Flipkart one rather than sharing a figure — two marketplaces drifting in
         // step would be its own kind of pattern. Copied onto a per-listing path so
         // the loaded path keeps the seller's number for the listing after this.
-        const price = jitterPrice(path.meesho.sellingPrice, variant.mrp);
+        const price = jitterPrice(path.meesho.sellingPrice, variant.mrp, 'meesho');
         const priced = { ...path, meesho: { ...path.meesho, sellingPrice: price } };
 
         broadcast({ type: 'event', event: 'item-start', index: i, total: fronts.length, sku });

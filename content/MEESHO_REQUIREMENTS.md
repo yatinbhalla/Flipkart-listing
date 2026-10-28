@@ -297,3 +297,31 @@ straight from the declaration to Proceed. Both are treated as optional.
 
 Set per price group by the seller and stored per path. MRP matches Flipkart; the
 selling price does not, and runs 26-52% below it.
+
+### What the price field actually means (from Yatin, 2026-10-28)
+
+**It is the settlement, not the customer's price.** The figure entered here is what
+the seller wants to receive; Meesho adds its shipping charge on top of it for the
+buyer. Flipkart works the other way round — see `content/APP_REQUIREMENTS.md` — so
+the same number means opposite things on the two marketplaces, and a figure must
+never be copied straight across.
+
+**On top of that comes a per-piece deduction, and it is roughly flat rather than
+proportional:**
+
+| GST band | Deducted per piece | Paths on this band |
+|---|---|---|
+| 5% | about Rs10 | 79 of 83 |
+| 18% | about Rs2 | 4 (the PVC covers) |
+
+Flat rather than proportional is the part that matters: Rs10 off a Rs110 path is
+**9% of settlement**, while Rs2 off a Rs250 PVC path is 0.8%. The cheapest paths
+carry by far the heaviest proportional deduction, so they are where a few rupees
+of price movement actually changes whether the listing is worth running.
+
+This is why the price jitter uses a different band here. On Flipkart a listing may
+draw below the seller's figure, because that figure is the customer's price and a
+small dip is just a smaller margin. On Meesho the figure is a floor the seller
+chose, so a listing only ever draws **upward** — see `JITTER_BANDS` in
+`src/server/price.js`. The buyer still sees a varying price, because shipping is
+added to whatever is set.
