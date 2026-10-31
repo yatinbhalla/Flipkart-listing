@@ -4,13 +4,67 @@ Entry point: **Catalog Uploads → Add Single Catalog**, then Select Category �
 Add Product Details. One seller account only (Yatin's).
 Field schemas: `content/MEESHO_*_SCHEMA.json`.
 
-## Scope — 49 of the 59 paths
+## Scope (changed 2026-10-31)
 
-- **`_SET` paths are skipped entirely** (10 of them: 9 Wall Hanging sets, 1 muslin
-  4-print set). They are bundles, not size variants, and are not listed on Meesho.
-- **Multi-variant paths list their first variant only** — no variation listings on
-  Meesho. Four paths are affected, all Table Covers (`TC_BT`, `TC_MWCT_BGCK`,
-  `TC_MW_BRLF`, `TC_MW_PF`), each listing the 4 Seater 40x60 variant.
+- **Multi-variant paths list as one Meesho catalog** with every variant as its own
+  product — see *Variation catalogs* below. This replaces "first variant only".
+- **There are no `_SET` paths any more.** The seller had the suffix dropped on both
+  marketplaces: the wall organisers' `WH_P_SET`, `WH_P_SET_1`, `WH_P_SET_4` are now
+  `WH_P`, `WH_1P`, `WH_4P` (the single paths' SKUs), and the dohar set's
+  `BM_W_BL_TD_SET` … are `BM_W_BL_TD` …. They list on Meesho like any other variation.
+- A variation path's `meesho` block holds the catalog's values. Each variant's own
+  differences (price, Net Quantity, colour, clothing picks) sit in `variant.meesho`,
+  copied from the single path that already lists that product on Meesho. A variant
+  whose MRP differs from the parent's must state its own Meesho price; the run
+  refuses rather than list a 60x90 at the 40x60's settlement.
+- The clothing set's Pink single lists under *Girls Clothing Sets*, Sky and Yellow
+  under *Boys*. One catalog has one category, so the variation catalog uses Boys
+  ("Kid's Clothing Set") for all three.
+
+## Variation catalogs (read off the live form, 2026-10-31)
+
+The rule above ("first variant only") predates the seller asking for Meesho
+variation listings. How Meesho does it, verified on Table Cloths:
+
+- **A Meesho variation is a product inside one catalog.** "Add Product Images" at the
+  category step is `#addImages`, a `multiple` file input. Each file becomes one
+  product, and the modal says *"You can add minimum 1 and maximum 9 products to
+  create a catalog"*. The cap is **9**, not 10.
+- **Only front images go in at that step.** The modal says so ("Please add only front
+  image of your product… you can add it in next step"). So N variants need N
+  different front photos.
+- **The form opens with a tab per product** (Product 1, Product 2, …) and a
+  `+ Add Product` box beside them. Clicking the words "Add Product" opened no file
+  chooser, so the driver should hand over every front at the category step instead.
+- **"Add Images" on the right belongs to the selected product.** It is the per-product
+  extras (`#addMoreImagesInput`), still capped at four images per product.
+- **"Copy input details to all product"** is ticked by default. With it on, filling
+  Product 1 carried GST, Product Name, Inventory and the Free Size row to Product 2.
+  It did **not** carry Style code, Meesho Price, MRP, Return Discount, row SKU id or
+  Color. Values stay put per product when you switch tabs and back. The safe driver
+  fills every field on every product explicitly.
+- **There is no size axis for most home categories.** Table Cloths, Aprons, Appliance
+  Cover and Fridge Cover offer only Free Size. A 40x60 and a 60x90 cover therefore
+  become two products in the catalog, each with its own front photo, not two size rows.
+  Only the clothing sets have real sizes.
+- **"Save and Go Back"** sits beside Submit Catalog, so a catalog can be left as a
+  draft. **A filled form that is abandoned now leaves a draft too:** the fill-only
+  pilot (submit off) showed up under Drafts with its 3 products. The note further down
+  that abandoning leaves nothing is out of date for filled forms.
+- **Proven end to end:** the mauve wall organiser went in as one 3-product catalog
+  (`WH_P`, `WH_1P`, `WH_4P`), submitted via Update Changes → Proceed, and the
+  Single Uploads list showed it at **QC Pass** about three minutes later.
+- **Never write "Search keywords" in a description.** Meesho's brand check flags the
+  word "keywords", removes it from the text it shows ("Search : kitchen apron…"), and
+  then keeps the warning up with nothing highlighted and Update Changes disabled. The
+  apron and hooded towel catalogs stalled on it three times before this was found. The
+  keyword line is now labelled "Also called:". Other ordinary words it flagged
+  (everyday, diamond, current, standard, ensure, cooler, navy) are swapped out up front
+  by `scrubFlagged`. "an" is left in, since the modal clears it reliably.
+- **Every failed submit leaves a Draft.** The stalled attempts are under Drafts in
+  Single Uploads.
+- **Verification:** `GET /api/meesho/catalogs` reads the Single Uploads list from the
+  live session (`?status=QC Error` narrows it) and saves a screenshot to `data/runs/`.
 
 ## Categories
 

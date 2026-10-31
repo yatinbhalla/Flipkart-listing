@@ -93,10 +93,42 @@ export function fitDescription(text, limit = DESCRIPTION_CAP) {
   return (stop > limit * 0.6 ? cut.slice(0, stop + 1) : cut).trim();
 }
 
+/**
+ * Ordinary words Meesho's brand check has flagged, with a plain stand-in for each.
+ *
+ * The check is fuzzy — these are words that happen to resemble a brand name — and
+ * clearing it in its modal is not reliable: on the apron catalog (2026-10-31) the
+ * words were deleted and Update Changes still never came alive, so the catalog could
+ * not be submitted. Kept out of the copy up front instead. "an" was flagged too, but
+ * swapping an article breaks the sentence and the modal has cleared it every time,
+ * so it is left to the modal.
+ */
+export const FLAGGED_WORDS = {
+  everyday: 'daily',
+  diamond: 'quilted',
+  current: 'present',
+  standard: 'regular',
+  ensure: 'make sure',
+  cooler: 'colder',
+  navy: 'dark blue',
+};
+
+/** Swap flagged words for their stand-ins, keeping a leading capital. */
+export function scrubFlagged(text) {
+  return String(text || '').replace(/\b[A-Za-z]+\b/g, (w) => {
+    const sub = FLAGGED_WORDS[w.toLowerCase()];
+    if (!sub) return w;
+    return w[0] === w[0].toUpperCase() ? sub[0].toUpperCase() + sub.slice(1) : sub;
+  });
+}
+
 /** The description Meesho gets: the stored copy, plus keywords when they fit. */
 export function meeshoDescription(copy) {
-  let desc = fitDescription(copy?.description);
-  const kw = 'Search keywords: ' + (copy?.searchKeywords || []).join(', ') + '.';
+  let desc = fitDescription(scrubFlagged(copy?.description));
+  // Not labelled "Search keywords": Meesho's brand check flags the word "keywords",
+  // drops it from the text it shows and then keeps the modal up with nothing left to
+  // strike, so the apron catalog could never be submitted (2026-10-31).
+  const kw = 'Also called: ' + scrubFlagged((copy?.searchKeywords || []).join(', ')) + '.';
   if (desc.length + kw.length + 2 <= DESCRIPTION_CAP) desc = desc + '\n\n' + kw;
   return desc;
 }
@@ -148,6 +180,13 @@ export function createFiller(page, log) {
       return null;
     }
     const wanted = (Array.isArray(value) ? value : [value]).map(String);
+    // In a catalog of several products, Product 1's choices are copied onto the rest,
+    // so most dropdowns already say the right thing — reopening each one is slow.
+    const current = await page.locator(sel).first().inputValue().catch(() => '');
+    if (current && wanted.includes(current)) {
+      log(`  ${what} = ${current} (already)`);
+      return current;
+    }
     let offered = [];
     let opened = false;
     // A second try per value, but only when the list never rendered. On a slow form
@@ -257,21 +296,43 @@ export function createFiller(page, log) {
   return { problems, has, type, pick, typeVerified, byCandidates };
 }
 
+/** "You can add minimum 1 and maximum 9 products to create a catalog" — the category step's own words. */
+export const MAX_PRODUCTS = 9;
+
 /**
- * Fill and optionally submit one catalog.
+ * Fill and optionally submit one catalog holding one product.
  *
  * `images` is { front, extras } — the front is chosen at the category step and the
  * extras go in afterwards through a single file input. Meesho caps the set at four.
  */
 export async function createListing(page, { path: cfg, variant, sku, images, submit, log }) {
-  const M = cfg.meesho;
-  if (!M) throw new Error(`"${cfg.name}" has no meesho block — nothing to list with.`);
-  const f = createFiller(page, log);
-  // The copy this listing drew from the pool is merged onto the variant itself;
-  // `variant.copy` is always version 1, so reading it gave every Meesho catalogue in
-  // a batch the same name and description.
-  const copy = variant.description ? variant : variant.copy;
-  const description = meeshoDescription(copy);
+  if (!cfg.meesho) throw new Error(`"${cfg.name}" has no meesho block — nothing to list with.`);
+  return createCatalog(page, {
+    category: cfg.meesho.category,
+    products: [{ meesho: cfg.meesho, variant, sku, front: images.front, extras: images.extras }],
+    submit,
+    log,
+  });
+}
+
+/**
+ * Fill and optionally submit one catalog of several products — Meesho's variation.
+ *
+ * A Meesho catalog is a set of products, one per front image, each with its own
+ * fields, price row and extra images; there is no variant matrix as on Flipkart.
+ * Every front goes in at the category step, the form then shows a tab per product,
+ * and each tab is filled in turn. "Copy input details to all product" is left ticked
+ * — it copies some of Product 1 onto the rest, but every field is still set on every
+ * product, because it does NOT copy the SKU, price, MRP or colour.
+ *
+ * `products` is [{ meesho, variant, sku, front, extras }], in catalog order.
+ */
+export async function createCatalog(page, { category, products, submit, log }) {
+  if (!products.length) throw new Error('A catalog needs at least one product.');
+  if (products.length > MAX_PRODUCTS) {
+    throw new Error(`Meesho takes at most ${MAX_PRODUCTS} products per catalog; this has ${products.length}.`);
+  }
+  const problems = [];
   // Phase timings: the seller can see which step is slow instead of us guessing.
   let mark = Date.now();
   const phase = (name) => {
@@ -279,7 +340,92 @@ export async function createListing(page, { path: cfg, variant, sku, images, sub
     mark = Date.now();
   };
 
-  log(`== category: ${M.category}`);
+  await openCatalog(page, category, products.map((p) => p.front), log, phase);
+
+  const many = products.length > 1;
+  for (let i = 0; i < products.length; i++) {
+    const tag = many ? `product ${i + 1} (${products[i].sku})` : '';
+    if (many) {
+      log(`━━ ${tag} ━━`);
+      if (!(await selectProduct(page, i, log))) {
+        problems.push(`${tag}: its tab would not open`);
+        continue;
+      }
+    }
+    const f = createFiller(page, log);
+    await fillProduct(page, f, products[i], log, phase);
+    problems.push(...f.problems.map((p) => (many ? `${tag}: ${p}` : p)));
+  }
+
+  // Switching tabs is where a value could land on the wrong product, so a catalog of
+  // several is read back product by product before anything is submitted.
+  if (many) {
+    for (let i = 0; i < products.length; i++) {
+      if (!(await selectProduct(page, i, log))) {
+        problems.push(`product ${i + 1}: its tab would not reopen for the read-back`);
+        continue;
+      }
+      for (const p of await readBack(page, products[i])) problems.push(`product ${i + 1} (${products[i].sku}): ${p}`);
+    }
+  } else {
+    problems.push(...(await readBack(page, products[0])));
+  }
+
+  if (problems.length) {
+    return { ok: false, submitted: false, problems };
+  }
+  if (!submit) return { ok: true, submitted: false, problems: [] };
+
+  log('== submit');
+  await page.locator('role=button[name="Submit Catalog"]').first().click({ timeout: 20000 });
+  return finishSubmission(page, log);
+}
+
+/**
+ * The values Meesho is known to rewrite behind you, plus the ones that prove the
+ * right product was filled: a SKU or price on the wrong tab shows up here.
+ */
+async function readBack(page, { meesho: M, variant, sku }) {
+  const out = [];
+  for (const [sel, want, what] of [
+    ['#wdrp_discount', M.returnDiscount, 'return discount'],
+    ['#supplier_sku_id', sku, 'row sku id'],
+    ['#supplier_product_id', sku, 'style code'],
+    ['#inventory', variant.stock, 'inventory'],
+    ['#product_mrp', variant.mrp, 'mrp'],
+    ['#meesho_price', M.sellingPrice, 'meesho price'],
+  ]) {
+    const got = await page.locator(sel).first().inputValue().catch(() => '?');
+    if (got !== String(want)) out.push(`${what} drifted to "${got}"`);
+  }
+  return out;
+}
+
+/**
+ * Open product tab `index` and wait for its form. The tabs are plain text
+ * ("Product 2"), not role=tab, and the form under them re-renders in place.
+ */
+export async function selectProduct(page, index, log) {
+  const tab = page.locator(`text=/^Product ${index + 1}$/`).first();
+  if (!(await tab.isVisible().catch(() => false))) {
+    // The strip scrolls sideways once it holds more tabs than fit.
+    await tab.scrollIntoViewIfNeeded({ timeout: 5000 }).catch(() => {});
+  }
+  const clicked = await tab
+    .click({ timeout: 10000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!clicked) {
+    log(`  FAIL could not open Product ${index + 1}`);
+    return false;
+  }
+  await page.waitForTimeout(2500);
+  return appears(page, '#supplier_gst_percent', 20000);
+}
+
+/** Category, every front image, Continue — up to the product form. */
+async function openCatalog(page, category, fronts, log, phase) {
+  log(`== category: ${category}`);
   await page.goto(SELECT_CATEGORY_URL, { waitUntil: 'domcontentloaded' });
   // The .../catalogs/single/add URL no longer opens the category picker on its own —
   // as of 2026-10-01 it redirects to the catalog LIST, where the picker is behind an
@@ -302,20 +448,23 @@ export async function createListing(page, { path: cfg, variant, sku, images, sub
   await page
     .locator('input[placeholder*="Sarees" i]')
     .first()
-    .fill(M.category.split('>').pop().trim());
-  if (!(await appears(page, `text="${M.category}"`, 25000))) {
-    throw new Error(`The typeahead never offered "${M.category}".`);
+    .fill(category.split('>').pop().trim());
+  if (!(await appears(page, `text="${category}"`, 25000))) {
+    throw new Error(`The typeahead never offered "${category}".`);
   }
   phase('typeahead');
-  await page.locator(`text="${M.category}"`).first().click();
+  await page.locator(`text="${category}"`).first().click();
   await appears(page, 'button:has-text("Add Product Images")', 30000);
   phase('category');
 
-  log('== front image');
+  // One file per product, all in one go: `#addImages` is a multiple input, and each
+  // file becomes a product tab in the order given. Clicking "Add Product" on the form
+  // later opened no file chooser, so this is the only proven way to add products.
+  log(`== front image${fronts.length > 1 ? `s (${fronts.length} products)` : ''}`);
   const chooser = page.waitForEvent('filechooser', { timeout: 25000 });
   await page.locator('button:has-text("Add Product Images")').first().click();
-  (await chooser).setFiles(images.front);
-  phase('front image handed over');
+  (await chooser).setFiles(fronts);
+  phase('front images handed over');
 
   // Move on the instant Continue will take a click, rather than waiting for the
   // upload to report itself finished.
@@ -336,10 +485,26 @@ export async function createListing(page, { path: cfg, variant, sku, images, sub
     }
     await page.waitForTimeout(250);
   }
-  if (!(await f.has('#supplier_gst_percent'))) {
+  if (!(await appears(page, '#supplier_gst_percent', 1000))) {
     throw new Error('The product details form never rendered after Continue.');
   }
+  // Every front has to have become a product, or the catalog is short a variant.
+  if (fronts.length > 1) {
+    const tabs = await page.locator('text=/^Product \\d+$/').count().catch(() => 0);
+    if (tabs !== fronts.length) {
+      throw new Error(`${fronts.length} front images went in but the form shows ${tabs} products.`);
+    }
+  }
   phase('continue');
+}
+
+/** Every field of the product whose tab is open. */
+async function fillProduct(page, f, { meesho: M, variant, sku, extras }, log, phase) {
+  // The copy this listing drew from the pool is merged onto the variant itself;
+  // `variant.copy` is always version 1, so reading it gave every Meesho catalogue in
+  // a batch the same name and description.
+  const copy = variant.description ? variant : variant.copy;
+  const description = meeshoDescription(copy);
 
   log('== product, size and inventory');
   await f.pick('#supplier_gst_percent', M.gstPercent, 'GST');
@@ -356,26 +521,31 @@ export async function createListing(page, { path: cfg, variant, sku, images, sub
   // Set offers "0-6 Months" and the rest — and Free Size there would list a newborn
   // set as fitting everyone.
   const sizeOption = M.sizeOption || 'Free Size';
-  log(`== size column (${sizeOption})`);
-  await page.locator('input[placeholder="Select"]:not([name])').first().click();
-  await appears(page, `text="${sizeOption}"`, 12000);
-  const box = await page.locator(`text="${sizeOption}"`).first().boundingBox().catch(() => null);
-  if (box) {
-    await page.mouse.click(box.x - 18, box.y + box.height / 2);
-    await page.waitForTimeout(500);
+  const sizeInput = page.locator('input[placeholder="Select"]:not([name])').first();
+  const sizeColumn = () => sizeInput.inputValue().catch(() => '');
+  const hasSize = async () => (await sizeColumn()).toLowerCase().includes(sizeOption.toLowerCase());
+  // Products after the first arrive with Product 1's size already ticked, copied over
+  // by "Copy input details to all product". Clicking the drawn box again would UNtick
+  // it and take the price row away, so a size already there is left alone.
+  if (await hasSize()) {
+    log(`== size column (${sizeOption}) — already set`);
+  } else {
+    log(`== size column (${sizeOption})`);
+    await sizeInput.click();
+    await appears(page, `text="${sizeOption}"`, 12000);
+    const box = await page.locator(`text="${sizeOption}"`).first().boundingBox().catch(() => null);
+    if (box) {
+      await page.mouse.click(box.x - 18, box.y + box.height / 2);
+      await page.waitForTimeout(500);
+    }
+    const apply = page.locator('button:has-text("Apply")').first();
+    if (await apply.isVisible().catch(() => false)) {
+      await apply.click();
+      // Choosing a size is what creates the price row; wait for the row, not the clock.
+      await appears(page, '#meesho_price', 30000);
+    }
   }
-  const apply = page.locator('button:has-text("Apply")').first();
-  if (await apply.isVisible().catch(() => false)) {
-    await apply.click();
-    // Choosing a size is what creates the price row; wait for the row, not the clock.
-    await appears(page, '#meesho_price', 30000);
-  }
-  const sizeColumn = await page
-    .locator('input[placeholder="Select"]:not([name])')
-    .first()
-    .inputValue()
-    .catch(() => '');
-  if (!sizeColumn.toLowerCase().includes(sizeOption.toLowerCase())) {
+  if (!(await hasSize())) {
     f.problems.push(`${sizeOption} column`);
   }
 
@@ -383,7 +553,7 @@ export async function createListing(page, { path: cfg, variant, sku, images, sub
   if (await f.has('#addMoreImagesInput')) {
     await page
       .locator('#addMoreImagesInput')
-      .setInputFiles(images.extras)
+      .setInputFiles(extras)
       .catch((err) => {
         f.problems.push('extra images');
         log(`  FAIL images: ${String(err.message).slice(0, 70)}`);
@@ -488,32 +658,14 @@ export async function createListing(page, { path: cfg, variant, sku, images, sub
   phase('fields');
 
   // Now the images have to be there. They have had the whole form-filling pass to
-  // finish, so this is usually instant.
+  // finish, so this is usually instant — and they must settle before another
+  // product's tab is opened, since the upload belongs to this one.
   if (await f.has('#addMoreImagesInput')) {
     if (!(await vanishes(page, 'text="Add Images"', 60000))) {
       f.problems.push('extra images did not all upload');
     }
     phase('images settled');
   }
-
-  // Re-read what Meesho likes to rewrite, immediately before committing.
-  for (const [sel, want, what] of [
-    ['#wdrp_discount', M.returnDiscount, 'return discount'],
-    ['#supplier_sku_id', sku, 'row sku id'],
-    ['#inventory', variant.stock, 'inventory'],
-  ]) {
-    const got = await page.locator(sel).first().inputValue().catch(() => '?');
-    if (got !== String(want)) f.problems.push(`${what} drifted to "${got}"`);
-  }
-
-  if (f.problems.length) {
-    return { ok: false, submitted: false, problems: f.problems };
-  }
-  if (!submit) return { ok: true, submitted: false, problems: [] };
-
-  log('== submit');
-  await page.locator('role=button[name="Submit Catalog"]').first().click({ timeout: 20000 });
-  return finishSubmission(page, log);
 }
 
 /**
@@ -927,7 +1079,7 @@ export async function clearBrandGate(page, log) {
   if (!(await gate.isVisible().catch(() => false))) return { seen: false, changed: false };
 
   const words = await page.evaluate(() =>
-    [...document.querySelectorAll('mark, [class*=highlight i], [class*=Highlight]')]
+    [...document.querySelectorAll('mark, [class*=highlight i], [class*=Highlight], [id="warning-brand"]')]
       .map((e) => (e.innerText || '').trim())
       .filter(Boolean),
   );
@@ -941,6 +1093,36 @@ export async function clearBrandGate(page, log) {
     if (!(await x.isVisible().catch(() => false))) break;
     if (await x.click({ timeout: 8000 }).then(() => true).catch(() => false)) removed++;
     await page.waitForTimeout(400);
+  }
+
+  // The other shape of the same modal (seen 2026-10-31 on the apron catalog, which
+  // flagged "everyday" and "diamond"): no chips at all. Each product's description is
+  // a contenteditable div, `#Product Description-<n>`, and every flagged word sits in
+  // it as `p#warning-brand`. Update Changes stays disabled until the text changes, so
+  // the word is selected and deleted with real keystrokes — mutating the DOM directly
+  // would not reach React's state, and the button would stay dead.
+  // Only highlights that still hold text: deleting a word may leave its empty wrapper.
+  const flagged = page.locator('[contenteditable="true"] [id="warning-brand"]').filter({ hasText: /\S/ });
+  for (let i = 0; i < 30; i++) {
+    const word = flagged.first();
+    if (!(await word.isVisible().catch(() => false))) break;
+    const before = await flagged.count();
+    const text = (await word.innerText().catch(() => '')).trim();
+    await word.scrollIntoViewIfNeeded({ timeout: 5000 }).catch(() => {});
+    const ok = await word
+      .dblclick({ timeout: 8000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!ok) break;
+    await page.keyboard.press('Backspace').catch(() => {});
+    await page.waitForTimeout(500);
+    // A word that survived the keystroke would be retried forever.
+    if ((await flagged.count()) >= before) {
+      log(`  could not delete flagged word "${text}"`);
+      break;
+    }
+    removed++;
+    log(`  struck "${text}" from a description`);
   }
 
   const update = page.locator('role=button[name="Update Changes"]').first();

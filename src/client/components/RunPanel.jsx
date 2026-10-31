@@ -106,7 +106,11 @@ export default function RunPanel({ path, running, progress, onStarted }) {
   // `{ path, name }`, which is what /api/run wants, so nothing below here changes.
   const fronts = mode === 'generate' ? approvedFronts : uploaded;
 
-  const imageVariants = path.variants.filter(variantNeedsImage);
+  // Meesho lists every variant as its own product, and every product needs its own
+  // front — even a Seating Capacity variant that shares the parent's on Flipkart.
+  const imageVariants = partner.includes('meesho')
+    ? path.variants.slice(1)
+    : path.variants.filter(variantNeedsImage);
   // A per-listing photo can't vary across a batch, so those paths list one at a time.
   const batchAllowed = imageVariants.length === 0;
   const copyReady = path.variants.every((v) => v.copy);
@@ -224,6 +228,9 @@ export default function RunPanel({ path, running, progress, onStarted }) {
             pathId: path.id,
             frontImages: fronts.map((f) => f.path),
             repeat: cycles,
+            variantImages: Object.fromEntries(
+              Object.entries(variantImages).map(([k, imgs]) => [k, (imgs || []).map((i) => i.path)]),
+            ),
             submit: sendToQc,
           }),
         });
@@ -626,7 +633,8 @@ export default function RunPanel({ path, running, progress, onStarted }) {
             Every front image becomes its own Meesho catalogue with its own SKU, the same as
             a Flipkart run. Meesho takes four images per product, so each listing is the front
             image plus the path's saved slots 2, 3 and 5 — slot 4 does not fit. A multi-variant
-            path lists only its first variant, and set paths are not listed there.
+            path becomes one catalogue holding every variant as its own product (up to 9),
+            so each variant needs its own front image here, sizes included.
           </p>
         )}
         {partner.includes('meesho') && !path.meesho && (

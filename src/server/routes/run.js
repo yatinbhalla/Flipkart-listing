@@ -23,7 +23,7 @@ import { MAX_BATCH, variantNeedsImage } from '../constants.js';
 import { describeListing, listingSkus, fitModelName } from '../format.js';
 import { PARTNERS, verticalFor, shopsyBlocker } from '../partners.js';
 import { jitterPrice } from '../price.js';
-import { runMeeshoBatch, meeshoBlocker } from './meesho.js';
+import { runMeeshoBatch, meeshoBlocker, meeshoVariantFronts } from './meesho.js';
 
 export { variantNeedsImage };
 
@@ -295,6 +295,14 @@ router.post('/', async (req, res) => {
     // Repeat per cycle so the variant selections stay aligned with `fronts`.
     variantFronts[v.key] = Array.from({ length: cycles }, () => list).flat();
   }
+  // Meesho needs a front for EVERY variant, including those that share the parent's
+  // photo on Flipkart, so it lines up its own set — checked now, before Flipkart lists.
+  let meeshoFronts = {};
+  if (storefronts.includes('meesho')) {
+    const lined = meeshoVariantFronts(path, variantImages, cycles, fronts.length);
+    if (lined.error) return res.status(400).json({ error: lined.error });
+    meeshoFronts = lined.fronts;
+  }
   const missingVariantImage = imageVariants.filter((v) => !variantFronts[v.key].length);
   if (missingVariantImage.length) {
     return res.status(400).json({
@@ -417,7 +425,9 @@ router.post('/', async (req, res) => {
       if (storefronts.length > 1) log(`━━ ${storefront.toUpperCase()} ━━`);
 
       if (storefront === 'meesho') {
-        const listed = await runMeeshoBatch({ path, pathId, fronts, submit: sendToQc, log });
+        const listed = await runMeeshoBatch({
+          path, pathId, fronts, variantFronts: meeshoFronts, submit: sendToQc, log,
+        });
         allDone.push(...listed);
         continue;
       }
