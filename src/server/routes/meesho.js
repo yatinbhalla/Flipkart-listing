@@ -233,9 +233,20 @@ export async function runMeeshoBatch({ path, pathId, fronts, variantFronts = {},
 
 // ─── POST /api/meesho/run — Meesho on its own ─────────────────────────────────
 router.post('/run', async (req, res) => {
-  const { pathId, frontImages = [], variantImages = {}, repeat = 1, submit = false } = req.body || {};
   if (getActiveRun()) return res.status(409).json({ error: 'A run is already in progress.' });
+  // Claimed before the first await, so a second request cannot slip past the check
+  // while this one is still reading its path (see POST /api/run).
+  setActiveRun({ marketplace: 'meesho', pathId: req.body?.pathId });
+  try {
+    await runMeesho(req, res);
+  } finally {
+    clearActiveRun();
+  }
+});
 
+/** The checks and the run behind POST /api/meesho/run. */
+async function runMeesho(req, res) {
+  const { pathId, frontImages = [], variantImages = {}, repeat = 1, submit = false } = req.body || {};
   const path = await getPath(pathId);
   if (!path) return res.status(404).json({ error: 'Path not found.' });
   const blocker = meeshoBlocker(path);
@@ -255,7 +266,6 @@ router.post('/run', async (req, res) => {
   if (lined.error) return res.status(400).json({ error: lined.error });
 
   res.json({ started: true });
-  setActiveRun({ marketplace: 'meesho', pathId });
   const log = (text) => broadcast({ type: 'info', text });
   try {
     if (cycles > 1) {
@@ -265,10 +275,9 @@ router.post('/run', async (req, res) => {
   } catch (err) {
     broadcast({ type: 'error', text: err.message });
   } finally {
-    clearActiveRun();
     broadcast({ type: 'event', event: 'run-finished' });
   }
-});
+}
 
 // ─── GET /api/meesho/catalogs — what Meesho's own list says ───────────────────
 // A submission that reached Proceed is not proof the catalog exists. This reads the

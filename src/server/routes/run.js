@@ -21,7 +21,7 @@ import { getSession } from '../../browser/session.js';
 import * as L from '../../browser/listing.js';
 import { MAX_BATCH, variantNeedsImage } from '../constants.js';
 import { describeListing, listingSkus, fitModelName } from '../format.js';
-import { PARTNERS, verticalFor, shopsyBlocker } from '../partners.js';
+import { PARTNERS, verticalFor, shopsyBlocker, adaptFields } from '../partners.js';
 import { jitterPrice } from '../price.js';
 import { runMeeshoBatch, meeshoBlocker, meeshoVariantFronts } from './meesho.js';
 
@@ -41,8 +41,17 @@ const SHARED_SLOTS = ['img2', 'img3', 'img4', 'img5'];
  * matrix is a locked label, and a column entry for it stalls the run, so the
  * column of whichever axis is in use is dropped from the ones filled. A path can
  * then list both axes as columns and each storefront fills the one it can edit.
+ *
+ * Only the FIRST column of that name is the axis. Table Cover's matrix has two
+ * "Color" columns: the locked axis, then the colour-filter dropdown (`at: 1`), which
+ * the variant rows must still fill — dropping both left it blank on every row.
+ *
+ * The columns go through the same Shopsy renames as the tabs. They used to be passed
+ * as written for Flipkart, so on Shopsy "Items Included" and the second "Color" were
+ * not found under their Shopsy names (Sales Package, Color For Refiner), the rows
+ * went out without them, and Send to QC did nothing at all (2026-11-01).
  */
-export function variantsFor(variants, columns, storefront) {
+export function variantsFor(variants, columns, storefront, vertical) {
   const swapped =
     storefront === 'shopsy'
       ? variants.map((v) =>
@@ -50,9 +59,10 @@ export function variantsFor(variants, columns, storefront) {
         )
       : variants;
   const axes = new Set(swapped.map((v) => v.axis).filter(Boolean));
+  const kept = columns ? columns.filter((c) => !(axes.has(c.label) && !c.at)) : null;
   return {
     variants: swapped,
-    columns: columns ? columns.filter((c) => !axes.has(c.label)) : null,
+    columns: kept && storefront === 'shopsy' ? adaptFields(kept, vertical, storefront) : kept,
   };
 }
 
@@ -199,11 +209,24 @@ router.post('/send-to-qc', async (req, res) => {
 // ─── POST /api/run — drive the real listings ─────────────────────────────────
 // `frontImages` is an array of absolute paths: one listing per image, run
 // sequentially in a single browser session.
+//
+// The run is claimed before the checks, not after them. Hashing every photo of a
+// large variant set outlasts a client's patience, and a second request arriving in
+// the meantime passed the same check: on 2026-11-01 three runs drove one browser at
+// once and wrecked each other's forms.
 router.post('/', async (req, res) => {
   if (getActiveRun()) {
     return res.status(409).json({ error: 'A run is already in progress.' });
   }
+  setActiveRun(req.body?.pathId || 'starting');
+  try {
+    await run(req, res);
+  } finally {
+    clearActiveRun();
+  }
+});
 
+async function run(req, res) {
   const {
     pathId,
     frontImages = [],
@@ -388,7 +411,6 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ error: `Could not read the images: ${err.message}` });
   }
 
-  setActiveRun(pathId);
   res.json({ started: true, total: fronts.length, images: selected.length, cycles });
 
   const log = (text) => broadcast({ type: 'info', text });
@@ -498,7 +520,9 @@ router.post('/', async (req, res) => {
         // This listing's slice of the batch: the i-th Front View for each variant.
         const listingVariantImages = {};
         for (const v of imageVariants) listingVariantImages[v.key] = variantFronts[v.key][i];
-        const { variants: onStorefront, columns } = variantsFor(resolved, path.variantColumns, storefront);
+        const { variants: onStorefront, columns } = variantsFor(
+          resolved, path.variantColumns, storefront, path.vertical,
+        );
         await L.fillVariants(
           page, onStorefront, log, columns, listingVariantImages, shared, variantShared,
         );
@@ -577,9 +601,8 @@ router.post('/', async (req, res) => {
   } catch (err) {
     fail(err.message);
   } finally {
-    clearActiveRun();
     broadcast({ type: 'event', event: 'run-finished', done: allDone, failed });
   }
-});
+}
 
 export default router;

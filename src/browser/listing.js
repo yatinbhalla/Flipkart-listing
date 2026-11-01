@@ -668,6 +668,12 @@ export async function fillVariants(
 ) {
   if (variants.length < 2) return;
 
+  // A large variant set slows the whole tab, not just Create: with nine colours a
+  // plain thumbnail click took over 30s (net table covers, 2026-11-01) and failed
+  // the listing after 50 minutes of uploads. Set per call, so a small set that
+  // follows a large one gets the ordinary timeout back.
+  page.setDefaultTimeout(variants.length > 5 ? 180000 : 30000);
+
   await openVariantTab(page, log);
 
   for (let i = 1; i < variants.length; i++) {
@@ -847,6 +853,30 @@ export async function fillVariants(
       }
     }
   }
+
+  // Every SKU must sit on its own colour's row. Photos are attached by axis value in
+  // the side menu, so a SKU on the right row is a SKU with the right photos; a SKU on
+  // another row means one product's SKU, price and copy go live under another's
+  // picture. That has happened before (rows reordered, "White" found inside "Off
+  // White"), so it is checked here and fails the listing before Send to QC.
+  if (axisName) {
+    const rows = await V.readRowCount(page);
+    const onRow = new Map();
+    for (let r = 0; r < rows; r++) {
+      const cells = await V.readRow(page, r).catch(() => null);
+      if (cells?.['Seller SKU ID']) onRow.set(cells['Seller SKU ID'].trim(), cells[axisName] || '');
+    }
+    const wrong = [];
+    for (const v of variants.slice(1)) {
+      const at = onRow.get(v.sku);
+      if (at === undefined) wrong.push(`${v.sku} is on no row`);
+      else if (at.trim().toLowerCase() !== String(v.axisValue).trim().toLowerCase()) {
+        wrong.push(`${v.sku} (${v.axisValue}) is on the "${at}" row`);
+      }
+    }
+    if (wrong.length) throw new Error(`SKU and colour do not match — ${wrong.join('; ')}`);
+    log(`  ✓ Every SKU is on its own ${axisName} row (${variants.length - 1} checked).`);
+  }
 }
 
 /**
@@ -866,7 +896,14 @@ async function fillVariantRowFromMap(page, i, v, columns, log) {
   const skipped = [];
   const locked = [];
   for (const col of columns) {
-    const value = col.from ? valueAt(v, col.from) : col.value;
+    let value = col.from ? valueAt(v, col.from) : col.value;
+    // A Shopsy substitution (see partners.js) applies to the matrix as it does to
+    // the tabs: "All Season" is not an Ideal Usage option there.
+    if (col.substitute) {
+      value = Array.isArray(value)
+        ? value.map((x) => col.substitute[x] ?? x)
+        : col.substitute[value] ?? value;
+    }
     if (value === undefined || value === null || value === '' ||
         (Array.isArray(value) && value.length === 0)) {
       continue;
@@ -1023,7 +1060,20 @@ export async function sendToQc(page, log) {
     .then(() => true)
     .catch(() => false);
   if (!banner) {
-    throw new Error('Clicked Send to QC but no success confirmation appeared. Check the browser.');
+    // A variant left without images makes the button do nothing at all: no request,
+    // no message. The reason is only in the Variant Issues panel on the variant tab,
+    // so read it out rather than leaving "check the browser".
+    await F.openTab(page, F.TABS.variants).catch(() => {});
+    const issues = await page
+      .locator('text=/^Variant Issues/')
+      .first()
+      .locator('xpath=ancestor::div[2]')
+      .innerText({ timeout: 5000 })
+      .then((t) => t.replace(/\s+/g, ' ').trim().slice(0, 300))
+      .catch(() => '');
+    throw new Error(
+      `Clicked Send to QC but no success confirmation appeared. ${issues || 'Check the browser.'}`,
+    );
   }
   log('✓ Sent for Quality Check.');
   return true;

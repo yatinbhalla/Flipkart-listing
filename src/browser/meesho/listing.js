@@ -99,9 +99,8 @@ export function fitDescription(text, limit = DESCRIPTION_CAP) {
  * The check is fuzzy — these are words that happen to resemble a brand name — and
  * clearing it in its modal is not reliable: on the apron catalog (2026-10-31) the
  * words were deleted and Update Changes still never came alive, so the catalog could
- * not be submitted. Kept out of the copy up front instead. "an" was flagged too, but
- * swapping an article breaks the sentence and the modal has cleared it every time,
- * so it is left to the modal.
+ * not be submitted. Kept out of the copy up front instead. "an" is swapped because
+ * striking it leaves the sentence broken, while "the" reads correctly wherever "an" did.
  */
 export const FLAGGED_WORDS = {
   everyday: 'daily',
@@ -111,6 +110,9 @@ export const FLAGGED_WORDS = {
   ensure: 'make sure',
   cooler: 'colder',
   navy: 'dark blue',
+  an: 'the',
+  care: 'washing',
+  elegant: 'graceful',
 };
 
 /** Swap flagged words for their stand-ins, keeping a leading capital. */
@@ -1103,26 +1105,38 @@ export async function clearBrandGate(page, log) {
   // would not reach React's state, and the button would stay dead.
   // Only highlights that still hold text: deleting a word may leave its empty wrapper.
   const flagged = page.locator('[contenteditable="true"] [id="warning-brand"]').filter({ hasText: /\S/ });
-  for (let i = 0; i < 30; i++) {
-    const word = flagged.first();
-    if (!(await word.isVisible().catch(() => false))) break;
-    const before = await flagged.count();
-    const text = (await word.innerText().catch(() => '')).trim();
-    await word.scrollIntoViewIfNeeded({ timeout: 5000 }).catch(() => {});
-    const ok = await word
-      .dblclick({ timeout: 8000 })
-      .then(() => true)
-      .catch(() => false);
-    if (!ok) break;
-    await page.keyboard.press('Backspace').catch(() => {});
-    await page.waitForTimeout(500);
-    // A word that survived the keystroke would be retried forever.
-    if ((await flagged.count()) >= before) {
-      log(`  could not delete flagged word "${text}"`);
-      break;
+  // On a catalog of several products the modal shows ONE product's description at a
+  // time, with a card per product above it. Clearing only the one on screen left the
+  // rest flagged, and Update Changes stays disabled until every product is clean —
+  // which read as "struck the word, modal went dead" on the 2026-11-01 table covers.
+  const cards = page.locator('[role="dialog"] img[alt="product-image"]');
+  const products = Math.max(1, await cards.count().catch(() => 0));
+  for (let c = 0; c < products; c++) {
+    if (products > 1) {
+      if (!(await cards.nth(c).click({ timeout: 8000 }).then(() => true).catch(() => false))) continue;
+      await page.waitForTimeout(700);
     }
-    removed++;
-    log(`  struck "${text}" from a description`);
+    for (let i = 0; i < 30; i++) {
+      const word = flagged.first();
+      if (!(await word.isVisible().catch(() => false))) break;
+      const before = await flagged.count();
+      const text = (await word.innerText().catch(() => '')).trim();
+      await word.scrollIntoViewIfNeeded({ timeout: 5000 }).catch(() => {});
+      const ok = await word
+        .dblclick({ timeout: 8000 })
+        .then(() => true)
+        .catch(() => false);
+      if (!ok) break;
+      await page.keyboard.press('Backspace').catch(() => {});
+      await page.waitForTimeout(500);
+      // A word that survived the keystroke would be retried forever.
+      if ((await flagged.count()) >= before) {
+        log(`  could not delete flagged word "${text}"`);
+        break;
+      }
+      removed++;
+      log(`  struck "${text}" from ${products > 1 ? `product ${c + 1}'s` : 'a'} description`);
+    }
   }
 
   const update = page.locator('role=button[name="Update Changes"]').first();

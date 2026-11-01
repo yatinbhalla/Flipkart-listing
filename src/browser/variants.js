@@ -464,7 +464,13 @@ async function removePartialPill(page, td, value) {
 }
 
 export async function setCellPills(page, rowIdx, name, values, occurrence = 0) {
-  const list = (Array.isArray(values) ? values : [values]).map((v) => String(v).trim()).filter(Boolean);
+  // The matrix's tag widget takes a comma as "commit this tag", so a value holding
+  // one went in as two pills and was then reported refused ("spills, stains and
+  // scratches", "assorted designs, sent at random" — three runs on 2026-11-01).
+  // A dash keeps it one pill and reads the same.
+  const list = (Array.isArray(values) ? values : [values])
+    .map((v) => String(v).trim().replace(/\s*,\s*/g, ' - '))
+    .filter(Boolean);
   if (!list.length) return;
   // A dropdown menu left open by an earlier column floats over the row and
   // swallows the container click, so clear it before touching this cell.
@@ -601,13 +607,23 @@ export async function selectVariantImageTarget(page, value) {
   // listed as "Light Blue, Units - 1", so an exact match found nothing while the row
   // was sitting there. Exact stays first so a vertical with both "Blue" and
   // "Light Blue" still picks the right one.
+  //
+  // The fallback matches the value as one whole comma-separated part, not as a
+  // substring. "White" as a substring found "Off White, 1" first on the crochet table
+  // covers (2026-11-01): White's photos landed on Off White, Off White's then replaced
+  // them, and White went out with none, which blocks Send to QC without a word.
+  const esc = want.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const exact = page
     .locator('[class*=SideMenuItem]')
     .filter({ has: page.locator(`[class*=SideMenuItemText]:text-is("${want}")`) })
     .first();
   const partial = page
     .locator('[class*=SideMenuItem]')
-    .filter({ has: page.locator(`[class*=SideMenuItemText]:has-text("${want}")`) })
+    .filter({
+      has: page
+        .locator('[class*=SideMenuItemText]')
+        .filter({ hasText: new RegExp(`(^|,)\\s*${esc}\\s*(,|$)`, 'i') }),
+    })
     .first();
   let item = exact;
   let found = await exact
@@ -739,8 +755,14 @@ export async function addVariant(page, axis, value) {
   }
   await settle(page, 400);
 
+  // The page freezes after each Create while it rebuilds the variant set, and the
+  // freeze grows by about half again with every value already there: 10s for the
+  // second colour, 31s by the sixth on the net table covers (2026-11-01), when the
+  // default 30s click timeout gave out mid-click. Generous here so a set of up to
+  // about eight still goes in; past that the waits run into many minutes each, so
+  // larger sets are split into separate listings rather than waited out.
   const create = box.locator('text=Create').first();
-  await create.click();
+  await create.click({ timeout: 300000 });
   await page.waitForTimeout(3000);
 }
 
