@@ -63,6 +63,13 @@ export default function App() {
 
   const selected = paths.find((p) => p.id === selectedId);
 
+  // A path is a "variation" when it carries more than one variant row — that is
+  // exactly what makes it list as a multi-variant listing rather than a plain one.
+  // Derived rather than flagged in config, so a path that gains or loses variants
+  // moves rows on its own.
+  const singlePaths = paths.filter((p) => (p.variants?.length ?? 1) <= 1);
+  const variationPaths = paths.filter((p) => (p.variants?.length ?? 1) > 1);
+
   return (
     <div className="mx-auto max-w-5xl px-6 py-8">
       <header className="mb-6 flex flex-wrap items-start gap-3">
@@ -89,8 +96,31 @@ export default function App() {
         </div>
       </header>
 
+      {/* Two rows rather than one list of 117. A product and its variation path read
+          almost identically by name — "Kitchen Apron" and "Kitchen Apron variation" —
+          so the split is by what they actually are: one listing, or one listing
+          carrying several variants. Searching stays inside the row you type in. */}
       {paths.length > 1 && (
-        <PathPicker paths={paths} selectedId={selectedId} onSelect={setSelectedId} />
+        <div className="mb-4">
+          {singlePaths.length > 0 && (
+            <PathPicker
+              label="Single product"
+              hint="paths · one listing each"
+              paths={singlePaths}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+            />
+          )}
+          {variationPaths.length > 0 && (
+            <PathPicker
+              label="Variation"
+              hint="paths · several variants in one listing"
+              paths={variationPaths}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+            />
+          )}
+        </div>
       )}
 
       {!selected && <p className="text-sm text-slate-500">No paths yet.</p>}

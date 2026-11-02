@@ -13,7 +13,7 @@ import { searchPaths } from '../pathSearch.js';
  *
  * The input doubles as the display, so the selected path is still readable at rest.
  */
-export default function PathPicker({ paths, selectedId, onSelect }) {
+export default function PathPicker({ paths, selectedId, onSelect, label, hint }) {
   // null means "not searching" — the input then shows the selection instead.
   const [query, setQuery] = useState(null);
   const [open, setOpen] = useState(false);
@@ -68,7 +68,18 @@ export default function PathPicker({ paths, selectedId, onSelect }) {
   }
 
   return (
-    <div className="relative mb-4 max-w-2xl">
+    <div className="relative mb-2 max-w-2xl">
+      {label && (
+        <div className="mb-1 flex items-baseline gap-2">
+          <span className="text-xs font-medium text-fk-ink">{label}</span>
+          <span className="text-[11px] text-slate-400">
+            {paths.length} {hint}
+          </span>
+          {/* Which row the current selection came from, so it is obvious at a glance
+              which of the two is live — both inputs otherwise look identical. */}
+          {selected && <span className="ml-auto text-[11px] text-emerald-700">selected</span>}
+        </div>
+      )}
       <input
         ref={inputRef}
         type="text"
@@ -76,7 +87,7 @@ export default function PathPicker({ paths, selectedId, onSelect }) {
         aria-expanded={open}
         aria-label="Search paths"
         value={query ?? (selected ? pathLabel(selected) : '')}
-        placeholder={`Search ${paths.length} paths — SKU, name, colour, vertical`}
+        placeholder={`Search ${paths.length} — SKU, name, colour, vertical`}
         onChange={(e) => {
           setQuery(e.target.value);
           setOpen(true);
@@ -124,7 +135,18 @@ export default function PathPicker({ paths, selectedId, onSelect }) {
                       {skuPrefix(p) || '—'}
                     </span>
                     <span className="truncate text-slate-600">{p.name}</span>
-                    <span className="ml-auto shrink-0 text-[10px] text-slate-400">{p.vertical}</span>
+                    {p.variants?.length > 1 && (
+                      <span className="ml-auto shrink-0 rounded bg-slate-100 px-1 text-[10px] text-slate-500">
+                        {p.variants.length} variants
+                      </span>
+                    )}
+                    <span
+                      className={`shrink-0 text-[10px] text-slate-400 ${
+                        p.variants?.length > 1 ? '' : 'ml-auto'
+                      }`}
+                    >
+                      {p.vertical}
+                    </span>
                   </button>
                 </li>
               ))}
