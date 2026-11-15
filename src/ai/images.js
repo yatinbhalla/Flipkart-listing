@@ -19,10 +19,12 @@ import path from 'path';
 /**
  * Providers in the order they are tried, overridable with IMAGE_PROVIDERS.
  *
- * Gemini first because the key is already in .env and already pays for the copy.
- * OpenAI second so a Gemini quota wall does not stop a batch.
+ * OpenAI only. Its /images/edits endpoint really edits the photo it is given;
+ * Cloudflare's FLUX klein came back with a completely different product, so it is
+ * no longer a fallback — a wrong picture is worse than a failed one. It can still
+ * be opted into with IMAGE_PROVIDERS=openai,cloudflare.
  */
-const DEFAULT_PROVIDERS = ['cloudflare', 'openai'];
+const DEFAULT_PROVIDERS = ['openai'];
 
 /** Flipkart's minimum is 1100px; ask for 1200 so nothing has to be upscaled afterwards. */
 export const IMAGE_EDGE = 1200;

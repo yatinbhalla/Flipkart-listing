@@ -110,9 +110,7 @@ router.post('/generate', async (req, res) => {
   if (!ready.length) {
     return res.status(400).json({
       error:
-        'No image provider is configured. Add CLOUDFLARE_ACCOUNT_ID and ' +
-        'CLOUDFLARE_API_TOKEN (free allowance covers about 57 images a day), or ' +
-        'OPENAI_API_KEY, to .env and restart.',
+        'No image provider is configured. Add OPENAI_API_KEY to .env and restart.',
     });
   }
 
