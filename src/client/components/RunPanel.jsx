@@ -113,6 +113,11 @@ export default function RunPanel({ path, running, progress, onStarted }) {
     : path.variants.filter(variantNeedsImage);
   // A per-listing photo can't vary across a batch, so those paths list one at a time.
   const batchAllowed = imageVariants.length === 0;
+
+  // Variants of one product type read almost the same by name, so each image picker
+  // is labelled with its SKU code too (AP_BLMF from AP_BLMF/{X}) — the code is what
+  // the seller matches photos by.
+  const skuCode = (v) => (v.skuPattern || path.skuPattern || '').replace(/\/?\{X\}$/, '');
   const copyReady = path.variants.every((v) => v.copy);
 
   // Flipkart, unlike Meesho, accepts any number of listings carrying the same photo,
@@ -380,6 +385,11 @@ export default function RunPanel({ path, running, progress, onStarted }) {
 
         {!batchAllowed && mode === 'upload' && (
           <div className="mb-1 text-sm font-medium">
+            {skuCode(path.variants[0]) && (
+              <code className="mr-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-semibold">
+                {skuCode(path.variants[0])}
+              </code>
+            )}
             {path.variants[0].label || 'Parent'}{' '}
             <span className="font-normal text-slate-400">(main listing)</span>
           </div>
@@ -427,7 +437,14 @@ export default function RunPanel({ path, running, progress, onStarted }) {
           <div className="mt-4 space-y-3 border-t border-slate-100 pt-3">
             {imageVariants.map((variant) => (
               <div key={variant.key} className="flex items-center gap-3">
-                <div className="w-48 shrink-0 text-sm font-medium">{variant.label}</div>
+                <div className="w-64 shrink-0">
+                  {skuCode(variant) && (
+                    <code className="mr-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-semibold">
+                      {skuCode(variant)}
+                    </code>
+                  )}
+                  <span className="text-sm font-medium">{variant.label}</span>
+                </div>
                 <input
                   type="file"
                   multiple
