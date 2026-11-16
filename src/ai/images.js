@@ -107,7 +107,12 @@ const mimeOf = (file) => {
  */
 const retryable = (status, message = '') =>
   (status >= 500 && status < 600) ||
-  (status === 429 && !/billing|plan|exceeded your current quota/i.test(message));
+  (status === 429 && !/billing|plan|exceeded your current quota/i.test(message)) ||
+  // No status at all means fetch never got an answer. Seen three times in testing —
+  // ENOTFOUND, ECONNRESET and a bare "fetch failed" — and it matters more now that a
+  // variation path makes one batch per variant: twenty calls where there used to be
+  // five, and a dropped connection on any of them left that variant short.
+  (!status && /fetch failed|network|socket|ECONNRESET|ENOTFOUND|ETIMEDOUT|EAI_AGAIN|aborted/i.test(message));
 
 function modelsFor(provider) {
   const list = [];
