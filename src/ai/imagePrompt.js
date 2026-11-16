@@ -217,6 +217,52 @@ export function packComposition(path, variant) {
 }
 
 /**
+ * The product's real size, and the instruction that makes the picture honest about it.
+ *
+ * Its own line rather than four words inside the description, because scale is not a
+ * detail — it is the thing a buyer judges from the photograph before they read a
+ * single dimension. Told only to fill the frame, the model photographs a 70cm baby
+ * towel and a 150cm table cover at exactly the same apparent size, and a hand towel
+ * that looks like a bath sheet is a return.
+ *
+ * Two shapes of size exist on these paths and they need different sentences:
+ * measurements ("70 x 70 cm", or width/length in inches), and garment sizes ("0-6
+ * Months"), where the scale cue is the child rather than a ruler.
+ */
+function sizing(variant) {
+  const label = String(variant.sizeLabel || '').trim();
+  const si = variant.sizeInches || {};
+  const w = Number(si.width);
+  const l = Number(si.length);
+  const inches =
+    Number.isFinite(w) && w > 0 && Number.isFinite(l) && l > 0 ? `${w} x ${l} inch` : '';
+  // Most labels are already a measurement in centimetres; keep the seller's own
+  // wording and add the other unit, rather than restating one of them twice.
+  const written = /\d\s*[x×]\s*\d/.test(label) ? label : '';
+
+  let measures = '';
+  if (written && inches) measures = `${written} (${inches})`;
+  else if (written) measures = written;
+  else if (inches) measures = `${inches} (${Math.round(w * 2.54)} x ${Math.round(l * 2.54)} cm)`;
+
+  if (measures) {
+    return (
+      `TRUE SIZE: the item measures ${measures}. It must look that size in the photograph — ` +
+      'the furniture, fittings, props and any person in shot all have to be in realistic ' +
+      'proportion to an item of exactly those dimensions. Fill the frame by bringing the ' +
+      'camera closer, never by making the item bigger than it is.'
+    );
+  }
+  if (label) {
+    return (
+      `TRUE SIZE: it is sold in size "${label}". Everything in shot must be in realistic ` +
+      'proportion to an item that size.'
+    );
+  }
+  return null;
+}
+
+/**
  * The prompt for listing `index` of a batch.
  *
  * `index` rotates the setting; lighting and angle move on their own strides, both
@@ -252,15 +298,8 @@ export function buildImagePrompt(path, variant, index = 0) {
   const colour = (list(variant.colorText)[0] || list(variant.colorRefiner)[0] || '').toString().toLowerCase();
   const material = list(variant.material).join(' ').toLowerCase();
   const pattern = list(variant.pattern).join(', ').toLowerCase();
-  const size = variant.sizeLabel || (variant.sizeInches ? `${variant.sizeInches.width}x${variant.sizeInches.length} inch` : '');
 
-  const describe = [
-    colour && `${colour}`,
-    material,
-    v.noun,
-    pattern && `with a ${pattern} design`,
-    size && `measuring ${size}`,
-  ]
+  const describe = [colour && `${colour}`, material, v.noun, pattern && `with a ${pattern} design`]
     .filter(Boolean)
     .join(' ');
 
@@ -282,6 +321,7 @@ export function buildImagePrompt(path, variant, index = 0) {
     '',
     `It is a ${describe || v.noun}.`,
     pack.phrase,
+    sizing(variant),
     '',
     `THE SHOT: re-photograph it ${inUse || withBaby ? '' : 'in a realistic '}${where}, ${light}, ${angle}.`,
     // On a baby shot the product still has to be the subject, or the result is a
@@ -295,7 +335,7 @@ export function buildImagePrompt(path, variant, index = 0) {
     // reach for and is the one thing those must not contain.
     inUse ? 'Show the product alone — no people, no hands, no pets in the frame.' : null,
     'Photorealistic commercial product photography, square 1:1 framing, the product',
-    'clearly the subject and filling most of the frame.',
+    'clearly the subject and filling most of the frame through close framing alone.',
     '',
     'DO NOT include: any text, lettering, watermark, logo, label or badge; any border or',
     'frame; any price or promotional graphic; any additional item that could be mistaken',
