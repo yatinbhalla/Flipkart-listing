@@ -54,6 +54,11 @@ const rotate = (arr, start, n) =>
 /** The nouns and verbs that differ by what the product actually is. */
 export function vocabulary(path, v) {
   const vertical = path.vertical;
+  // Some paths carry the whole category branch — "Home & Kitchen Accessories /
+  // Kitchen & Table Linen / Apron" — so an equality test against a bare leaf name
+  // silently fails and the product falls through to the table cover default. That is
+  // how aprons came to be described as table covers.
+  const leaf = String(vertical || '').split('/').pop().trim();
   if (vertical === 'Hanging Organizers') {
     return {
       noun: 'wall hanging organizer',
@@ -103,6 +108,43 @@ export function vocabulary(path, v) {
       detail: list(v.pattern).join(' and ').toLowerCase() || 'traditional print',
       mount: '',
       check: 'the space in front of your mandir',
+    };
+  }
+  // Clothing has to be tested BEFORE the /baby/ rule below, or "Baby Clothing Set"
+  // matches that first and five pieces of babywear get described as a hooded towel —
+  // which is what happened until this branch existed.
+  if (leaf === 'Kids Apparel Combo') {
+    return {
+      noun: 'baby clothing set',
+      nouns: ['baby clothing set', 'newborn clothing set', 'infant dress set', 'baby combo set'],
+      does: [
+        'dresses a baby for the day without hunting for pieces that match',
+        'keeps a newborn covered in soft cotton from top to bottom',
+        'goes straight into a hospital bag or a gift box',
+        'washes and dries quickly enough for daily changes',
+      ],
+      where: ['nursery', 'hospital bag', 'cot', 'gift box', 'day out'],
+      detail: list(v.pattern).join(' and ').toLowerCase() || 'printed cotton',
+      mount: '',
+      check: "your baby's age in months",
+    };
+  }
+  // An apron matched nothing at all and fell through to the table cover default, so
+  // the copy called it a table cover and sized it for a four seater.
+  if (leaf === 'Apron') {
+    return {
+      noun: 'apron',
+      nouns: ['apron', 'kitchen apron', 'cooking apron', 'kitchen wear apron'],
+      does: [
+        'keeps splashes and stains off your clothes while you cook',
+        'ties at the waist and stays put through a long session at the stove',
+        'wipes down and washes without the print fading out',
+        'saves changing your clothes after every meal you cook',
+      ],
+      where: ['kitchen', 'baking session', 'cooking class', 'food stall', 'home kitchen'],
+      detail: list(v.pattern).join(' and ').toLowerCase() || 'printed cotton',
+      mount: '',
+      check: 'the waist size you want it to tie at',
     };
   }
   // A hooded baby towel is filed under the same Bath Towels vertical as an adult
