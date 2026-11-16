@@ -9,6 +9,8 @@ import {
   savePath,
   deletePath,
   sharedImagesDir,
+  sharedImagePaths,
+  variantSharedImagePaths,
   resolveVariant,
   SHARED_SLOTS,
 } from '../store.js';
@@ -112,11 +114,25 @@ router.get('/:id/images/:slot', async (req, res) => {
   const { slot } = req.params;
   if (!SHARED_SLOTS.includes(slot)) return res.status(404).end();
   try {
-    const dir = sharedImagesDir(req.params.id);
-    const files = await fs.readdir(dir);
-    const hit = files.find((f) => f.startsWith(slot + '.'));
-    if (!hit) return res.status(404).end();
-    const file = path.join(dir, hit);
+    let file;
+    // ?variant=<key> serves what THAT variant would actually be generated from —
+    // its own photo in the slot, or the path's where it has none. The key is
+    // matched against the path's own variants rather than trusted, because it
+    // becomes a directory name.
+    const wanted = req.query.variant ? String(req.query.variant) : '';
+    if (wanted) {
+      const config = await getPath(req.params.id);
+      if (!config?.variants?.some((v) => String(v.key) === wanted)) return res.status(404).end();
+      const base = await sharedImagePaths(req.params.id);
+      file = (await variantSharedImagePaths(req.params.id, wanted, base))[SHARED_SLOTS.indexOf(slot)];
+      if (!file) return res.status(404).end();
+    } else {
+      const dir = sharedImagesDir(req.params.id);
+      const files = await fs.readdir(dir);
+      const hit = files.find((f) => f.startsWith(slot + '.'));
+      if (!hit) return res.status(404).end();
+      file = path.join(dir, hit);
+    }
 
     // Fingerprinted by mtime in the URL, so it is safe to cache hard.
     res.set('Cache-Control', 'public, max-age=31536000, immutable');

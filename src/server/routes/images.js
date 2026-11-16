@@ -39,6 +39,32 @@ const CONCURRENCY = 3;
 const MAX_REFERENCES = 3;
 
 /**
+ * Runs the seller has asked to stop.
+ *
+ * A batch is several calls at a minute or so each, and "generate for all" is one
+ * batch per variant — long enough that changing your mind halfway through is normal,
+ * and expensive enough that carrying on regardless costs real money.
+ *
+ * Stopping takes effect between images, not inside one. An image already in flight
+ * has been charged for, so it is finished and kept; what stopping prevents is paying
+ * for the ones that have not started. The client sends a runId with every call of a
+ * run so a stop reaches the batches that come after this one too.
+ *
+ * Bounded because it is a module-level Set in a long-lived process: the oldest ids
+ * are dropped once it grows, and a stale id matching a new run is impossible since
+ * ids are minted per run.
+ */
+const stopped = new Set();
+const STOP_MEMORY = 50;
+
+function markStopped(runId) {
+  if (!runId) return false;
+  stopped.add(runId);
+  while (stopped.size > STOP_MEMORY) stopped.delete(stopped.values().next().value);
+  return true;
+}
+
+/**
  * A library folder name from a request. Never a path.
  *
  * Rejects rather than sanitises: a request that does not already look exactly like
@@ -280,7 +306,7 @@ router.get('/library/:sku', async (req, res) => {
 
 // ─── POST /api/images/generate ────────────────────────────────────────────────
 router.post('/generate', async (req, res) => {
-  const { pathId, count = 1, referenceSlots, variantKey } = req.body || {};
+  const { pathId, count = 1, referenceSlots, variantKey, runId } = req.body || {};
   const cfg = await getPath(pathId);
   if (!cfg) return res.status(404).json({ error: 'Path not found.' });
 
@@ -314,8 +340,17 @@ router.post('/generate', async (req, res) => {
       `${row.label || cfg.name} (via ${ready.join(' then ')})…`,
   );
 
+  // A run that was stopped before this batch began never starts it.
+  if (stopped.has(runId)) {
+    log(`${sku}: skipped, generation was stopped.`);
+    return res.json({ sku, variantKey: row.key, images: [], stopped: true });
+  }
+
   const done = [];
   const jobs = Array.from({ length: n }, (_, i) => async () => {
+    // Checked as the job starts rather than when it was queued, so a stop lands on
+    // whatever has not begun yet instead of only on the next batch.
+    if (stopped.has(runId)) return null;
     const made = await makeOne({ cfg, sku, variant, index: i, references, others: done, log });
     if (made.file) done.push(made.file);
     log(`  ${sku} image ${i + 1}/${n} ${made.ok ? 'ready' : 'needs a look'}`);
@@ -323,17 +358,29 @@ router.post('/generate', async (req, res) => {
   });
 
   try {
-    const images = await pooled(jobs, CONCURRENCY);
+    const images = (await pooled(jobs, CONCURRENCY)).filter(Boolean);
+    const halted = stopped.has(runId);
     const good = images.filter((i) => i.ok).length;
     broadcast({
-      type: good ? 'success' : 'error',
-      text: `${sku}: generated ${good}/${n} image${n === 1 ? '' : 's'}.`,
+      type: halted ? 'info' : good ? 'success' : 'error',
+      text: halted
+        ? `${sku}: stopped after ${images.length} of ${n} image${n === 1 ? '' : 's'}.`
+        : `${sku}: generated ${good}/${n} image${n === 1 ? '' : 's'}.`,
     });
-    res.json({ sku, variantKey: row.key, images });
+    res.json({ sku, variantKey: row.key, images, stopped: halted });
   } catch (err) {
     broadcast({ type: 'error', text: err.message });
     res.status(500).json({ error: err.message });
   }
+});
+
+// ─── POST /api/images/stop ────────────────────────────────────────────────────
+/** Stop a run. Images already in flight finish — they have been paid for. */
+router.post('/stop', (req, res) => {
+  const { runId } = req.body || {};
+  if (!markStopped(runId)) return res.status(400).json({ error: 'No run to stop.' });
+  broadcast({ type: 'info', text: 'Stopping image generation after the ones already running…' });
+  res.json({ stopped: true });
 });
 
 // ─── POST /api/images/regenerate ──────────────────────────────────────────────

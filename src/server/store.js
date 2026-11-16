@@ -39,19 +39,37 @@ export async function listPaths() {
 }
 
 /**
- * How many reused images each variant would actually receive, and how many of them
- * are its own rather than inherited. The UI shows this so a mismatched count is
- * visible before a run rather than after it reaches Flipkart.
+ * What reused images each variant would actually receive, which of them are its own
+ * rather than inherited, and the slots themselves.
+ *
+ * The counts make a mismatch visible before a run rather than after it reaches
+ * Flipkart. The slot list is what lets the generate panel offer a photo picker per
+ * variant: the seller was being asked which photos to work from once, for the main
+ * listing, and every variant was then generated from whatever that choice resolved
+ * to — which is not a choice at all for a variant with four photographs of its own.
  */
 async function variantImageCounts(id) {
   const base = await sharedImagePaths(id);
   const config = await readJson(path.join(pathDir(id), 'config.json'), null);
   const out = {};
   for (const v of config?.variants || []) {
-    const own = await variantSharedImagePaths(id, v.key, base);
+    const resolved = await variantSharedImagePaths(id, v.key, base);
+    const slots = [];
+    for (let i = 0; i < SHARED_SLOTS.length; i++) {
+      const file = resolved[i];
+      if (!file) continue;
+      // mtime fingerprints the thumbnail so swapping a photo changes the URL.
+      const stat = await fs.stat(file).catch(() => null);
+      slots.push({
+        slot: SHARED_SLOTS[i],
+        own: file !== base[i],
+        v: stat ? Math.round(stat.mtimeMs) : 0,
+      });
+    }
     out[v.key] = {
-      reused: own.filter(Boolean).length,
-      own: own.filter((f, i) => f && f !== base[i]).length,
+      reused: resolved.filter(Boolean).length,
+      own: slots.filter((s) => s.own).length,
+      slots,
     };
   }
   return out;

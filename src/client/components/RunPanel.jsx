@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 // One definition, shared with the run route — a client-side copy of either of these
 // silently drifted once already and cost a run.
 import { MAX_BATCH, variantNeedsImage } from '../../server/constants.js';
@@ -13,6 +13,14 @@ import { PRICE_JITTER_BELOW, PRICE_JITTER_ABOVE } from '../../server/price.js';
  * through and let it decide.
  */
 const IMAGE_ACCEPT = 'image/*,.jpg,.jpeg,.jpe,.jfif,.png,.webp,.avif,.tif,.tiff,.heic,.heif,.bmp';
+
+const REF_SLOTS = [
+  ['img2', 'Close Up Shot'],
+  ['img3', 'Edge View'],
+  ['img4', 'Flip Side'],
+  ['img5', 'Package View'],
+];
+
 
 export default function RunPanel({ path, running, progress, onStarted }) {
   const [uploaded, setFronts] = useState([]);      // [{ path, name, width, height, upscaled }]
@@ -39,18 +47,38 @@ export default function RunPanel({ path, running, progress, onStarted }) {
   // every one of them needs its own front images — its own colour, its own pack.
   // This was a flat list, which is why generating on a variation path produced four
   // batches of the first colour and nothing for the rest.
-  const [generated, setGenerated] = useState({});   // { [variantKey]: [image] }
-  const [genCount, setGenCount] = useState(5);
-  // Which saved slots the model is shown. Slot 3 first because on these paths it is
-  // the close product photograph, while slot 2 is usually the marketing infographic
-  // — handing that over is what made generated images look drawn from the words.
-  const [refSlots, setRefSlots] = useState(['img3']);
+  const [fresh, setFresh] = useState({});           // { [variantKey]: [image] } this session
+  // What earlier batches left in this SKU's folder, kept apart from this session's
+  // work and collapsed by default. Generating daily for one path builds up hundreds,
+  // and opening the panel to a wall of them buries the five just made.
+  const [saved, setSaved] = useState({});           // { [variantKey]: [image] }
+  const [showSaved, setShowSaved] = useState({});   // { [variantKey]: true }
+  // How many to make, per variant. One number for the whole path was wrong on two
+  // counts: a variant whose photos the seller means to upload needs none, and
+  // "generate more" asks a different question to "generate" — after five, the next
+  // press is usually for two or three, not another five.
+  const [counts, setCounts] = useState({});         // { [variantKey]: number }
+  const [bulkCount, setBulkCount] = useState(5);
+  // Which saved slots the model is shown, per variant. Slot 3 first because on these
+  // paths it is the close product photograph, while slot 2 is usually the marketing
+  // infographic — handing that over is what made generated images look drawn from
+  // the words. Per variant because a variant with its own photographs is a different
+  // choice to the main listing's.
+  const [refSlots, setRefSlots] = useState({});     // { [variantKey]: ['img3'] }
   // Ticked images, keyed by file path rather than position: the grid grows at the
   // front when more are generated, and an index-keyed tick would follow the slot
   // instead of the picture.
   const [approved, setApproved] = useState({});     // { [variantKey]: { [file]: true } }
   const [genFor, setGenFor] = useState('');         // which variant is generating now
   const [genBusy, setGenBusy] = useState(false);
+  // The run in progress, so Stop can reach the batches that have not started yet.
+  // The ref is what the loop reads: state would be a render behind it.
+  const [genRun, setGenRun] = useState('');
+  const haltRef = useRef(false);
+  // The same fact as haltRef, in state, because the ref is what the loop reads and
+  // state is what the button is drawn from. A ref alone leaves Stop still reading
+  // "Stop" after it has been pressed, which looks like a click that did not land.
+  const [halting, setHalting] = useState(false);
 
   // Clear it when the run ends, or the next run opens with the Stop button already
   // greyed out and reading "Stopping…".
@@ -79,14 +107,17 @@ export default function RunPanel({ path, running, progress, onStarted }) {
 
   // Switching path or mode must not carry another path's pictures across.
   useEffect(() => {
-    setGenerated({});
+    setFresh({});
+    setSaved({});
+    setShowSaved({});
     setApproved({});
+    setCounts({});
+    setRefSlots({});
   }, [path.id, mode]);
 
-  // Seed each grid with what has already been made for that SKU. Generated images
-  // are kept per SKU code precisely so a later batch can reuse them instead of
-  // paying to draw the same product again; putting them in the same grid means they
-  // carry the same tick box and no second concept is needed.
+  // What has already been made for each SKU. Listed eagerly because the list is
+  // cheap and the count belongs on the toggle; the thumbnails only load when the
+  // seller opens it, which is the point of collapsing them.
   useEffect(() => {
     if (mode !== 'generate') return undefined;
     let cancelled = false;
@@ -99,8 +130,7 @@ export default function RunPanel({ path, running, progress, onStarted }) {
         if (!res?.ok || cancelled) continue;
         // eslint-disable-next-line no-await-in-loop
         const data = await res.json().catch(() => ({}));
-        // Only if nothing is there yet — a batch generated in the meantime wins.
-        setGenerated((g) => (g[target.key] ? g : { ...g, [target.key]: data.images || [] }));
+        setSaved((g) => (g[target.key] ? g : { ...g, [target.key]: data.images || [] }));
       }
     })();
     return () => {
@@ -109,16 +139,38 @@ export default function RunPanel({ path, running, progress, onStarted }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path.id, mode, partner.join('|')]);
 
+  // Which photos a variant would be generated from: its own where it has them, the
+  // main listing's where it does not. Supplied by the server so the picker shows
+  // what will actually be sent rather than what the parent happens to hold.
+  const slotsAvailable = (key) =>
+    path._variantImages?.[key]?.slots ?? (path._sharedImageSlots || []).map((sl) => ({ ...sl, own: false }));
+
+  // Slot 3 when the variant has one, otherwise whatever it does have. Picking a
+  // default that the variant lacks is how a batch ends up generated from the parent.
+  const slotsFor = (key) => {
+    if (refSlots[key]) return refSlots[key];
+    const have = slotsAvailable(key).map((sl) => sl.slot);
+    return have.includes('img3') ? ['img3'] : have.slice(0, 1);
+  };
+
+  const countOf = (key) => counts[key] ?? bulkCount;
+  const setCount = (key, n) =>
+    setCounts((c) => ({ ...c, [key]: Math.min(Math.max(Number(n) || 1, 1), MAX_BATCH) }));
+
+  // Everything made for a target, newest first. `all` is what can be ticked and what
+  // the duplicate check compares against; `shown` is what the grid draws.
+  const allOf = (key) => [...(fresh[key] || []), ...(saved[key] || [])];
+  const shownOf = (key) => (showSaved[key] ? allOf(key) : fresh[key] || []);
+
   const tick = (key, files, on) =>
     setApproved((a) => ({
       ...a,
       [key]: { ...(a[key] || {}), ...Object.fromEntries(files.map((f) => [f, on])) },
     }));
 
-  async function generate(target) {
-    setGenBusy(true);
+  /** One batch for one variant. `runId` ties it to the run Stop can halt. */
+  async function generateOne(target, runId) {
     setGenFor(target.key);
-    setError('');
     try {
       const res = await fetch('/api/images/generate', {
         method: 'POST',
@@ -126,40 +178,77 @@ export default function RunPanel({ path, running, progress, onStarted }) {
         body: JSON.stringify({
           pathId: path.id,
           variantKey: target.key,
-          count: genCount,
-          referenceSlots: refSlots,
+          count: countOf(target.key),
+          referenceSlots: slotsFor(target.key),
+          runId,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Could not generate images.');
+      if (data.stopped) {
+        haltRef.current = true;
+        setHalting(true);
+      }
       const made = data.images || [];
       // Newest first, and added to what is already there rather than replacing it:
       // pressing Generate twice should give more to choose from, not start over.
-      setGenerated((g) => ({ ...g, [target.key]: [...made, ...(g[target.key] || [])] }));
+      setFresh((g) => ({ ...g, [target.key]: [...made, ...(g[target.key] || [])] }));
       // Pre-tick the ones that passed; the seller unticks rather than ticks fifty.
       // Saved images stay unticked — they are offered, not chosen.
       tick(target.key, made.filter((im) => im.ok && im.file).map((im) => im.file), true);
     } catch (err) {
       setError(err.message);
+      // Do not carry a broken run on to the next variant.
+      haltRef.current = true;
+      setHalting(true);
     } finally {
       setGenFor('');
-      setGenBusy(false);
     }
   }
 
-  /** Every target in turn, so one press fills a whole variation path. */
-  async function generateAll() {
-    for (const target of genTargets) {
-      // eslint-disable-next-line no-await-in-loop
-      await generate(target);
+  /** A run over one or more targets, haltable between batches and between images. */
+  async function generateRun(targets) {
+    const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    haltRef.current = false;
+    setHalting(false);
+    setGenRun(runId);
+    setGenBusy(true);
+    setError('');
+    try {
+      for (const target of targets) {
+        if (haltRef.current) break;
+        // eslint-disable-next-line no-await-in-loop
+        await generateOne(target, runId);
+      }
+    } finally {
+      setGenBusy(false);
+      setGenRun('');
     }
+  }
+
+  /**
+   * Stop after what is already running.
+   *
+   * The ref stops this loop before the next variant; the server stops its own batch
+   * before the next image. Images already in flight finish, because they have been
+   * charged for either way and throwing them away would cost the seller twice.
+   */
+  async function stopGenerating() {
+    haltRef.current = true;
+    setHalting(true);
+    if (!genRun) return;
+    await fetch('/api/images/stop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ runId: genRun }),
+    }).catch(() => {});
   }
 
   async function regenerate(target, position) {
     setGenBusy(true);
     setGenFor(target.key);
     try {
-      const list = generated[target.key] || [];
+      const list = shownOf(target.key);
       const res = await fetch('/api/images/regenerate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -167,16 +256,22 @@ export default function RunPanel({ path, running, progress, onStarted }) {
           pathId: path.id,
           variantKey: target.key,
           index: position,
-          referenceSlots: refSlots,
-          others: list.filter((_, n) => n !== position).map((im) => im.file).filter(Boolean),
+          referenceSlots: slotsFor(target.key),
+          others: allOf(target.key).map((im) => im.file).filter(Boolean),
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Could not regenerate.');
       const old = list[position];
-      setGenerated((g) => ({
+      // The replacement joins this session's work whichever list the original came
+      // from: a saved image stays on disk, it just stops being the one on offer.
+      setFresh((g) => ({
         ...g,
-        [target.key]: (g[target.key] || []).map((im, n) => (n === position ? data.image : im)),
+        [target.key]: [data.image, ...(g[target.key] || []).filter((im) => im.file !== old?.file)],
+      }));
+      setSaved((g) => ({
+        ...g,
+        [target.key]: (g[target.key] || []).filter((im) => im.file !== old?.file),
       }));
       if (old?.file) tick(target.key, [old.file], false);
       if (data.image.file) tick(target.key, [data.image.file], Boolean(data.image.ok));
@@ -189,9 +284,10 @@ export default function RunPanel({ path, running, progress, onStarted }) {
   }
 
   // The ticked images for one target, in the same shape the upload route returns, so
-  // the run call below cannot tell which mode produced them.
+  // the run call below cannot tell which mode produced them. Reads both lists: a
+  // ticked image stays picked when the saved grid is collapsed again.
   const approvedOf = (key) =>
-    (generated[key] || [])
+    allOf(key)
       .filter((im) => im.file && approved[key]?.[im.file])
       .map((im) => ({ path: im.file, name: im.name, width: im.width, height: im.height }));
 
@@ -390,98 +486,78 @@ export default function RunPanel({ path, running, progress, onStarted }) {
                   'same number of picked images as the main listing.'}
             </p>
 
-            {/* Which slots go to the model. This is the whole ballgame: slot 2 on most
-                paths is the marketing infographic, and sending that is why generated
-                images used to look drawn from the words. Pick the real photographs. */}
-            <div className="mb-2 rounded border border-slate-200 bg-slate-50 p-2">
-              <div className="mb-1 text-xs font-medium text-slate-600">
-                Photos to work from{' '}
-                <span className="font-normal text-slate-400">
-                  — pick the real product shots, not the infographic
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                {[
-                  ['img2', 'Close Up Shot'],
-                  ['img3', 'Edge View'],
-                  ['img4', 'Flip Side'],
-                  ['img5', 'Package View'],
-                ].map(([slot, label]) => {
-                  const have = (path._sharedImageSlots || []).find((s) => s.slot === slot);
-                  return (
-                    <label
-                      key={slot}
-                      className={`flex items-center gap-1.5 text-xs ${have ? '' : 'opacity-40'}`}
-                    >
-                      <input
-                        type="checkbox"
-                        disabled={!have || genBusy || running}
-                        checked={refSlots.includes(slot)}
-                        onChange={(e) =>
-                          setRefSlots((cur) =>
-                            e.target.checked
-                              ? [...cur, slot].slice(0, 3)
-                              : cur.filter((s) => s !== slot),
-                          )
-                        }
-                      />
-                      {have && (
-                        <img
-                          src={`/api/paths/${path.id}/images/${slot}?w=40&v=${have.v}`}
-                          alt=""
-                          className="h-7 w-7 rounded object-cover"
-                        />
-                      )}
-                      <span>{label}</span>
-                    </label>
-                  );
-                })}
-              </div>
-              <p className="mt-1 text-[11px] text-slate-400">
-                Up to 3. More views give the model more to copy; each adds about 1,000 tokens
-                (roughly $0.008) per image.
-                {genTargets.length > 1 &&
-                  ' A variant with its own photo in a slot is generated from that one instead ' +
-                    'of the main listing\u2019s.'}
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="text-xs text-slate-600">How many</label>
+            {/* The bulk controls. "For all" is the common case; "first only" exists
+                because a seller often has their own photographs for some variants
+                and only wants the main listing drawn. */}
+            <div className="mb-3 flex flex-wrap items-center gap-2 rounded border border-slate-200 bg-slate-50 p-2">
+              <label className="text-xs text-slate-600">How many each</label>
               <input
                 type="number"
                 min="1"
                 max={MAX_BATCH}
-                value={genCount}
+                value={bulkCount}
                 disabled={genBusy || running}
-                onChange={(e) => setGenCount(Math.min(Math.max(Number(e.target.value) || 1, 1), MAX_BATCH))}
+                onChange={(e) => {
+                  const n = Math.min(Math.max(Number(e.target.value) || 1, 1), MAX_BATCH);
+                  setBulkCount(n);
+                  // The per-variant boxes follow, so one number still answers the
+                  // common case; changing a single box afterwards overrides it.
+                  setCounts({});
+                }}
                 className="w-16 rounded border border-slate-300 px-2 py-1 text-xs"
               />
-              {genTargets.length > 1 ? (
-                <>
-                  <span className="text-xs text-slate-500">
-                    each, for all {genTargets.length} variants
-                  </span>
-                  <button
-                    type="button"
-                    onClick={generateAll}
-                    disabled={genBusy || running}
-                    className="rounded bg-slate-900 px-3 py-1 text-xs font-medium text-white disabled:opacity-40"
-                  >
-                    {genBusy ? 'Generating…' : `Generate for all ${genTargets.length}`}
-                  </button>
-                </>
-              ) : null}
+              <button
+                type="button"
+                onClick={() => generateRun(genTargets)}
+                disabled={genBusy || running}
+                className="rounded bg-slate-900 px-3 py-1 text-xs font-medium text-white disabled:opacity-40"
+              >
+                {genTargets.length > 1 ? `Generate for all ${genTargets.length}` : 'Generate'}
+              </button>
+              {genTargets.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => generateRun([parentRow])}
+                  disabled={genBusy || running}
+                  className="rounded border border-slate-300 px-3 py-1 text-xs font-medium disabled:opacity-40"
+                >
+                  Generate for first only
+                </button>
+              )}
+              {genBusy && (
+                <button
+                  type="button"
+                  onClick={stopGenerating}
+                  disabled={halting}
+                  className="rounded border border-rose-300 px-3 py-1 text-xs font-medium text-rose-700 disabled:opacity-40"
+                >
+                  {halting ? 'Stopping…' : 'Stop'}
+                </button>
+              )}
+              {genBusy && (
+                <span className="text-xs text-slate-500">
+                  {halting
+                    ? 'finishing the images already running'
+                    : `working on ${genFor || '…'}`}
+                </span>
+              )}
             </div>
 
             {/* One block per listing that needs its own photographs. A variation path
                 is several products sharing a page, and each of them has its own
-                colour, its own pack and its own SKU — so each gets its own batch,
-                generated from its own reference photos. */}
+                colour, its own pack and its own SKU — so each gets its own photos to
+                work from, its own count and its own batch. */}
             {genTargets.map((target) => {
-              const made = generated[target.key] || [];
+              const mine = fresh[target.key] || [];
+              const keep = saved[target.key] || [];
+              const shown = shownOf(target.key);
               const picked = approvedOf(target.key).length;
               const isParent = target === parentRow;
               const short = !isParent && fronts.length > 0 && picked !== fronts.length;
+              const slots = slotsAvailable(target.key);
+              const chosen = slotsFor(target.key);
+              const busyHere = genFor === target.key;
+              const keptPicked = keep.filter((im) => approved[target.key]?.[im.file]).length;
               return (
                 <div key={target.key} className="mt-3 rounded-lg border border-slate-200 p-2">
                   <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -496,46 +572,112 @@ export default function RunPanel({ path, running, progress, onStarted }) {
                         <span className="font-normal text-slate-400"> (main listing)</span>
                       )}
                     </span>
+                    <input
+                      type="number"
+                      min="1"
+                      max={MAX_BATCH}
+                      value={countOf(target.key)}
+                      disabled={genBusy || running}
+                      onChange={(e) => setCount(target.key, e.target.value)}
+                      className="w-14 rounded border border-slate-300 px-2 py-1 text-xs"
+                      title="How many to make for this listing"
+                    />
                     <button
                       type="button"
-                      onClick={() => generate(target)}
-                      disabled={genBusy || running}
+                      onClick={() => generateRun([target])}
+                      disabled={genBusy || running || !chosen.length}
                       className="rounded border border-slate-300 px-2 py-1 text-[11px] font-medium disabled:opacity-40"
                     >
-                      {genFor === target.key
+                      {busyHere
                         ? 'Generating…'
-                        : made.length
-                          ? `Generate ${genCount} more`
-                          : `Generate ${genCount}`}
+                        : mine.length || keep.length
+                          ? `Generate ${countOf(target.key)} more`
+                          : `Generate ${countOf(target.key)}`}
                     </button>
-                    {made.length > 0 && (
+                    {(mine.length > 0 || picked > 0) && (
                       <span
                         className={
                           short ? 'text-xs font-semibold text-rose-600' : 'text-xs text-slate-500'
                         }
                       >
-                        {picked} of {made.length} picked
-                      </span>
-                    )}
-                    {!isParent && (
-                      <span className="text-[11px] text-slate-400">
-                        {path._variantImages?.[target.key]?.own > 0
-                          ? `from its own ${path._variantImages[target.key].own} photo${
-                              path._variantImages[target.key].own > 1 ? 's' : ''
-                            }`
-                          : "from the main listing's photos \u2014 check the colour"}
+                        {picked} picked
                       </span>
                     )}
                   </div>
 
-                  {made.length === 0 ? (
+                  {/* Which photographs this listing is drawn from. Per variant
+                      because a variant with four of its own is a different choice to
+                      the main listing's, and sending the wrong one is what made
+                      generated images look drawn from the words. */}
+                  <div className="mb-2 flex flex-wrap items-center gap-3 rounded bg-slate-50 px-2 py-1.5">
+                    <span className="text-[11px] font-medium text-slate-600">
+                      Photos to work from
+                    </span>
+                    {REF_SLOTS.map(([slot, label]) => {
+                      const have = slots.find((sl) => sl.slot === slot);
+                      return (
+                        <label
+                          key={slot}
+                          className={`flex items-center gap-1 text-[11px] ${have ? '' : 'opacity-40'}`}
+                          title={have?.own ? "this variant's own photo" : "the main listing's photo"}
+                        >
+                          <input
+                            type="checkbox"
+                            disabled={!have || genBusy || running}
+                            checked={chosen.includes(slot)}
+                            onChange={(e) =>
+                              setRefSlots((cur) => {
+                                const now = cur[target.key] ?? chosen;
+                                return {
+                                  ...cur,
+                                  [target.key]: e.target.checked
+                                    ? [...now, slot].slice(0, 3)
+                                    : now.filter((x) => x !== slot),
+                                };
+                              })
+                            }
+                          />
+                          {have && (
+                            <img
+                              src={`/api/paths/${path.id}/images/${slot}?w=36&v=${have.v}&variant=${encodeURIComponent(target.key)}`}
+                              alt=""
+                              className="h-6 w-6 rounded object-cover"
+                            />
+                          )}
+                          <span>{label}</span>
+                          {have?.own && <span className="text-emerald-600">own</span>}
+                        </label>
+                      );
+                    })}
+                    {!chosen.length && (
+                      <span className="text-[11px] font-semibold text-rose-600">
+                        pick at least one
+                      </span>
+                    )}
+                  </div>
+
+                  {keep.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setShowSaved((v) => ({ ...v, [target.key]: !v[target.key] }))
+                      }
+                      className="mb-2 text-[11px] text-slate-500 underline"
+                    >
+                      {showSaved[target.key] ? 'Hide' : 'Show'} {keep.length} made earlier
+                      {keptPicked > 0 && ` (${keptPicked} picked)`}
+                    </button>
+                  )}
+
+                  {shown.length === 0 ? (
                     <p className="text-[11px] text-slate-400">
-                      Nothing made for this SKU yet. Generated images are kept under it, so the
-                      next batch can reuse them.
+                      {keep.length
+                        ? 'Nothing made this session. Earlier images are above.'
+                        : 'Nothing made for this SKU yet. Generated images are kept under it, so the next batch can reuse them.'}
                     </p>
                   ) : (
                     <div className="grid grid-cols-3 gap-2">
-                      {made.map((im, i) => (
+                      {shown.map((im, i) => (
                         <div
                           key={im.file || `${im.name || 'err'}-${i}`}
                           className="rounded border border-slate-200 p-1"
@@ -555,7 +697,7 @@ export default function RunPanel({ path, running, progress, onStarted }) {
                           )}
                           {im.saved && (
                             <div className="mt-1 text-[10px] text-slate-400">
-                              made earlier{im.madeAt ? ` · ${new Date(im.madeAt).toLocaleDateString()}` : ''}
+                              made earlier{im.madeAt ? ` \u00b7 ${new Date(im.madeAt).toLocaleDateString()}` : ''}
                             </div>
                           )}
                           {(im.flags || []).map((f, n) => (
