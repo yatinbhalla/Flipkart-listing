@@ -31,6 +31,17 @@ import { ensureFlipkartFormat, ensureMinSize, MIN_EDGE } from './normalize.js';
 const md5 = (buf) => crypto.createHash('md5').update(buf).digest('hex');
 
 /**
+ * How far apart two generated images must be, in bits of a 64-bit average hash.
+ *
+ * Calibrated against the only reference points measured on this catalogue: an
+ * unchanged copy of a photograph scores 0, and genuinely different shots of the
+ * same product scored 20-28. Below 6 bits two pictures are the same picture with
+ * noise; under 12 they differ too little to be worth two listings.
+ */
+const NEAR_DUPLICATE = 6;
+const LOW_VARIATION = 12;
+
+/**
  * 64-bit average hash, used for one narrow question only: did the model hand the
  * reference straight back instead of re-scening it?
  *
@@ -97,6 +108,36 @@ export async function validateGenerated(file, { against, others = [] } = {}) {
     const [a, b] = await Promise.all([aHash(resolved), aHash(against)]);
     if (distance(a, b) <= 2) {
       flags.push({ level: 'error', text: 'essentially unchanged from the reference photo' });
+    }
+  }
+
+  // Near-duplicates of the other images in this batch.
+  //
+  // A perceptual hash is the wrong tool for "is this the same PRODUCT" — measured on
+  // this catalogue, a different product scored closer than the same product from
+  // another angle. It is the right tool for "are these two pictures nearly the same
+  // picture", which is a question about the image rather than about its meaning, and
+  // that is all this asks. Two listings carrying near-identical photos is the thing
+  // the seller is generating a batch to avoid.
+  const mine = await aHash(resolved);
+  for (const other of others) {
+    if (!other || other === resolved) continue;
+    const theirs = await aHash(other).catch(() => null);
+    if (theirs === null) continue;
+    const apart = distance(mine, theirs);
+    if (apart <= NEAR_DUPLICATE) {
+      flags.push({
+        level: 'error',
+        text: `too close to another image in this batch (${apart} bits apart) — regenerate it`,
+      });
+      break;
+    }
+    if (apart <= LOW_VARIATION) {
+      flags.push({
+        level: 'warn',
+        text: `only ${apart} bits different from another in this batch — little visible variation`,
+      });
+      break;
     }
   }
 

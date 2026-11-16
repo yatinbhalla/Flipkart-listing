@@ -37,6 +37,10 @@ export default function RunPanel({ path, running, progress, onStarted }) {
   const [mode, setMode] = useState('upload');
   const [generated, setGenerated] = useState([]);
   const [genCount, setGenCount] = useState(5);
+  // Which saved slots the model is shown. Slot 3 first because on these paths it is
+  // the close product photograph, while slot 2 is usually the marketing infographic
+  // — handing that over is what made generated images look drawn from the words.
+  const [refSlots, setRefSlots] = useState(['img3']);
   const [approved, setApproved] = useState({});
   const [genBusy, setGenBusy] = useState(false);
 
@@ -59,7 +63,7 @@ export default function RunPanel({ path, running, progress, onStarted }) {
       const res = await fetch('/api/images/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pathId: path.id, count: genCount }),
+        body: JSON.stringify({ pathId: path.id, count: genCount, referenceSlots: refSlots }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Could not generate images.');
@@ -82,6 +86,7 @@ export default function RunPanel({ path, running, progress, onStarted }) {
         body: JSON.stringify({
           pathId: path.id,
           index: i,
+          referenceSlots: refSlots,
           others: generated.filter((_, n) => n !== i).map((im) => im.file).filter(Boolean),
         }),
       });
@@ -302,10 +307,63 @@ export default function RunPanel({ path, running, progress, onStarted }) {
         {mode === 'generate' && (
           <div className="mb-3">
             <p className="mb-2 text-xs text-slate-500">
-              Each image is made by re-photographing one of this path's own saved photos in a
-              new setting, so the product itself stays exactly as it really is. Check every
-              one before running — you are responsible for what the listing shows.
+              Each image is made by re-photographing this path's own saved photos in a new
+              setting, so the product itself stays exactly as it really is. Check every one
+              before running — you are responsible for what the listing shows.
             </p>
+
+            {/* Which slots go to the model. This is the whole ballgame: slot 2 on most
+                paths is the marketing infographic, and sending that is why generated
+                images used to look drawn from the words. Pick the real photographs. */}
+            <div className="mb-2 rounded border border-slate-200 bg-slate-50 p-2">
+              <div className="mb-1 text-xs font-medium text-slate-600">
+                Photos to work from{' '}
+                <span className="font-normal text-slate-400">
+                  — pick the real product shots, not the infographic
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                {[
+                  ['img2', 'Close Up Shot'],
+                  ['img3', 'Edge View'],
+                  ['img4', 'Flip Side'],
+                  ['img5', 'Package View'],
+                ].map(([slot, label]) => {
+                  const have = (path._sharedImageSlots || []).find((s) => s.slot === slot);
+                  return (
+                    <label
+                      key={slot}
+                      className={`flex items-center gap-1.5 text-xs ${have ? '' : 'opacity-40'}`}
+                    >
+                      <input
+                        type="checkbox"
+                        disabled={!have || genBusy || running}
+                        checked={refSlots.includes(slot)}
+                        onChange={(e) =>
+                          setRefSlots((cur) =>
+                            e.target.checked
+                              ? [...cur, slot].slice(0, 3)
+                              : cur.filter((s) => s !== slot),
+                          )
+                        }
+                      />
+                      {have && (
+                        <img
+                          src={`/api/paths/${path.id}/images/${slot}?w=40&v=${have.v}`}
+                          alt=""
+                          className="h-7 w-7 rounded object-cover"
+                        />
+                      )}
+                      <span>{label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="mt-1 text-[11px] text-slate-400">
+                Up to 3. More views give the model more to copy; each adds about 1,000 tokens
+                (roughly $0.008) per image.
+              </p>
+            </div>
             <div className="flex items-center gap-2">
               <label className="text-xs text-slate-600">How many</label>
               <input

@@ -1,5 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
+import sharp from 'sharp';
 
 /**
  * Turns one of a path's real product photos into a listing front image in a new
@@ -55,6 +56,24 @@ const MODELS = {
 /** Cheapest first until the review grid says the product is not holding up. */
 const quality = () => process.env.IMAGE_QUALITY || 'low';
 
+/**
+ * References are sent downscaled.
+ *
+ * Input images dominate the bill and the latency, and the detail is not needed:
+ * measured against gpt-image-2.5-sunburst, a 1200px reference costs about 1,520
+ * image-input tokens against 1,024 at 512px, and two 1200px references took 149
+ * seconds where two at 512px took 27 — for a result that was, if anything, better.
+ */
+export const REFERENCE_EDGE = Number(process.env.IMAGE_REFERENCE_EDGE) || 512;
+
+async function shrinkReference(file) {
+  const bytes = await sharp(file)
+    .resize(REFERENCE_EDGE, REFERENCE_EDGE, { fit: 'inside', withoutEnlargement: true })
+    .png()
+    .toBuffer();
+  return { bytes, mime: 'image/png', name: `${path.basename(file, path.extname(file))}.png` };
+}
+
 const MAX_RETRIES = 2;
 /** The model that last worked, per provider, so a batch probes once and not fifty times. */
 const _working = {};
@@ -100,7 +119,8 @@ function modelsFor(provider) {
 }
 
 // ─── Gemini ───────────────────────────────────────────────────────────────────
-async function gemini({ model, key, bytes, mime, prompt }) {
+async function gemini({ model, key, refs, prompt }) {
+  // Gemini takes several inline parts; send every reference it was given.
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
     {
@@ -111,7 +131,12 @@ async function gemini({ model, key, bytes, mime, prompt }) {
       // imageConfig aspect ratio rather than responseModalities.
       body: JSON.stringify({
         contents: [
-          { parts: [{ inline_data: { mime_type: mime, data: bytes.toString('base64') } }, { text: prompt }] },
+          {
+            parts: [
+              ...refs.map((r) => ({ inline_data: { mime_type: r.mime, data: r.bytes.toString('base64') } })),
+              { text: prompt },
+            ],
+          },
         ],
         generationConfig: { imageConfig: { aspectRatio: '1:1' } },
       }),
@@ -149,7 +174,9 @@ async function gemini({ model, key, bytes, mime, prompt }) {
  * than guess silently, a rejection carries Cloudflare's own validation text back to
  * the caller — the API names the fields it wanted, which is how this gets pinned.
  */
-async function cloudflare({ model, key, bytes, mime, prompt }) {
+async function cloudflare({ model, key, refs, prompt }) {
+  // Opt-in only, and it ignores the reference anyway — first one is plenty.
+  const { bytes, mime } = refs[0];
   const account = process.env.CLOUDFLARE_ACCOUNT_ID;
   const url = `https://api.cloudflare.com/client/v4/accounts/${account}/ai/run/${model}`;
 
@@ -180,17 +207,22 @@ async function cloudflare({ model, key, bytes, mime, prompt }) {
 }
 
 // ─── OpenAI ───────────────────────────────────────────────────────────────────
-async function openai({ model, key, bytes, mime, prompt }) {
+async function openai({ model, key, refs, prompt }) {
   const form = new FormData();
   form.append('model', model);
   form.append('prompt', prompt);
+  // NOT sent, though both look like the obvious fix and the docs are ambiguous about
+  // them: gpt-image-2.5-sunburst rejects `input_fidelity` and `complexity` outright
+  // with HTTP 400. Fidelity here comes from sending the right photographs, not a flag.
   // Custom sizes are allowed when both edges are multiples of 16 and the pixel count
   // is in range; 1200 is 16x75, so this clears Flipkart's 1100 floor natively and
   // nothing has to be resampled afterwards.
   form.append('size', `${IMAGE_EDGE}x${IMAGE_EDGE}`);
   form.append('quality', quality());
   form.append('n', '1');
-  form.append('image', new Blob([bytes], { type: mime }), `reference.${mime.split('/')[1]}`);
+  // Repeated image[] rather than a single image: the endpoint takes up to 16, and
+  // more views of the same product is the lever that actually improved fidelity.
+  for (const r of refs) form.append('image[]', new Blob([r.bytes], { type: r.mime }), r.name);
 
   const res = await fetch('https://api.openai.com/v1/images/edits', {
     method: 'POST',
@@ -210,7 +242,23 @@ async function openai({ model, key, bytes, mime, prompt }) {
     err.status = 422;
     throw err;
   }
-  return { buffer: Buffer.from(b64, 'base64'), mime: 'image/png' };
+  return { buffer: Buffer.from(b64, 'base64'), mime: 'image/png', usage: json.usage };
+}
+
+/**
+ * What one call actually cost, from the usage the API returns rather than an estimate.
+ *
+ * Published rates: $8 per 1M image input tokens, $5 per 1M text input, $30 per 1M
+ * image output.
+ */
+export function describeUsage(usage) {
+  if (!usage) return null;
+  const d = usage.input_tokens_details || {};
+  const image = d.image_tokens ?? 0;
+  const text = d.text_tokens ?? 0;
+  const out = usage.output_tokens ?? 0;
+  const dollars = (image * 8 + text * 5 + out * 30) / 1e6;
+  return { image, text, out, dollars, label: `${image}+${text} in, ${out} out ≈ $${dollars.toFixed(4)}` };
 }
 
 const CALL = { cloudflare, openai, gemini };
@@ -222,9 +270,14 @@ const CALL = { cloudflare, openai, gemini };
  * retrying. Throws with everything that was tried when nothing worked, because
  * "image generation failed" on its own is not diagnosable.
  */
-export async function generateImage({ referenceFile, prompt, log = () => {} }) {
-  const bytes = await fs.readFile(referenceFile);
-  const mime = mimeOf(referenceFile);
+export async function generateImage({ referenceFiles, referenceFile, prompt, log = () => {} }) {
+  // Several photographs of one product beat one: measured on the hooded towel, adding
+  // the close weave shot to the flat-lay fixed a towelling texture the flat-lay alone
+  // did not convey. referenceFile stays accepted so older callers keep working.
+  const files = (referenceFiles?.length ? referenceFiles : [referenceFile]).filter(Boolean);
+  if (!files.length) throw new Error('No reference photograph to work from.');
+
+  const refs = await Promise.all(files.map(shrinkReference));
 
   const providers = (process.env.IMAGE_PROVIDERS || DEFAULT_PROVIDERS.join(','))
     .split(',')
@@ -242,7 +295,7 @@ export async function generateImage({ referenceFile, prompt, log = () => {} }) {
     for (const model of modelsFor(provider)) {
       for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         try {
-          const out = await CALL[provider]({ model, key, bytes, mime, prompt });
+          const out = await CALL[provider]({ model, key, refs, prompt });
           if (_working[provider] !== model) {
             log(`✓ Images via ${provider} · ${model}`);
             _working[provider] = model;
