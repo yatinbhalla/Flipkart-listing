@@ -180,6 +180,29 @@ export function resolveVariant(path, variant) {
 // ─── SKUs ──────────────────────────────────────────────────────────────────────
 
 /**
+ * The SKU code a variant's generated images are filed under — `AP_MC/{X}` becomes
+ * `AP_MC`.
+ *
+ * The code, not an allocated SKU: an allocated SKU is unique per listing and a new
+ * one is minted on every run, so filing by it would put every image in a folder of
+ * its own. The code is the stable identity of the product, and it is already what
+ * the seller matches photographs by — it is printed on the image pickers for exactly
+ * that reason.
+ *
+ * Sanitised because it becomes a directory name and `TC_60*90_BT` is not a legal one
+ * on Windows. The `*` becomes an `x`, which is what it means anyway.
+ */
+export function skuFolder(config, variant) {
+  const pattern = String(variant?.skuPattern || config.skuPattern || '');
+  const code = pattern.replace(/\/?\{X\}\s*$/, '').trim();
+  const safe = code
+    .replace(/\*/g, 'x')
+    .replace(/[^A-Za-z0-9._-]+/g, '_')
+    .replace(/^[^A-Za-z0-9]+/, '');
+  return safe.slice(0, 64) || `path_${String(config.id).replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 58)}`;
+}
+
+/**
  * Allocate a SKU from a pattern like `TC_BT/{X}` or `TC_60*90_BT/{X}`, where {X}
  * is a random 5-digit number.
  *

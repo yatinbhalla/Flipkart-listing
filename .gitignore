@@ -31,3 +31,7 @@ f*.txt
 
 # Per-variant Front View photos. Product images stay local, like data/runs.
 data/variant-fronts/
+
+# Generated front images, kept per SKU code so they can be reused. These are
+# product photographs of the seller's own stock — local, like everything else here.
+data/generated/
