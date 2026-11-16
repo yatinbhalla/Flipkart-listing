@@ -1,4 +1,4 @@
-import { vocabulary } from './compose.js';
+import { colourWord, packContents, vocabulary } from './compose.js';
 
 /**
  * Builds the instruction that turns one of a path's real photos into a listing front
@@ -17,7 +17,8 @@ import { vocabulary } from './compose.js';
  *
  *  - HOW MANY items are in shot. A pack of four photographed as one item is a
  *    returns problem, and the count lives in a different field on almost every
- *    vertical.
+ *    vertical. Counted by `packContents()` in compose.js rather than here, so the
+ *    photograph and the description under it cannot contradict each other.
  */
 
 const list = (a) => (Array.isArray(a) ? a.filter(Boolean) : [a].filter(Boolean));
@@ -68,32 +69,11 @@ const IN_USE = {
     'draped over the side of a pram',
   ],
   aasan: ['laid on the floor in front of a small mandir, a brass lamp beside it'],
+  'fridge top cover': [
+    'spread over the top of a refrigerator in a tidy kitchen, side flaps hanging down',
+    'on a fridge top with a couple of small jars tucked into its side pockets',
+  ],
 };
-
-/**
- * The product family, refined for framing purposes.
- *
- * `vocabulary()` is right about most things and wrong about two in a way that only
- * shows up once you start staging the product: it files a Kids Apparel Combo as a
- * "hooded baby towel" (its /baby|infant/ test matches "Baby Clothing Set" first) and
- * an Apron as a "table cover" (nothing matches, so it hits the default). Framing a
- * baby outfit as a towel over a bath, or an apron spread on a laid dining table, is
- * visibly wrong.
- *
- * Corrected here rather than in vocabulary() because that function also drives the
- * stored copy for 43 paths, and quietly changing how an apron is described is a
- * bigger change than this one. The underlying misfiling is worth fixing properly —
- * it means apron copy currently calls it a table cover — but separately.
- */
-function family(path, variant) {
-  const leaf = String(path.vertical || '').split('/').pop().trim();
-  // Apron and Kids Apparel Combo used to be corrected here; they are branches in
-  // vocabulary() now, so only the appliance cover is still misfiled — it lands on
-  // the table cover default, which is nearly right for a fridge top and wrong
-  // enough to stage it on a dining table.
-  if (leaf === 'Appliance Cover') return 'appliance cover';
-  return vocabulary(path, variant).noun;
-}
 
 /**
  * Framings that put a baby in the picture, and how often each family gets one.
@@ -132,11 +112,6 @@ const WITH_BABY = {
   },
 };
 
-/** Settings for the one family `vocabulary()` still misfiles — see `family()`. */
-const WHERE = {
-  'appliance cover': ['kitchen with a fridge', 'modular kitchen', 'utility corner'],
-};
-
 const ANGLE = [
   'photographed straight on at eye level',
   'photographed at a three-quarter angle',
@@ -146,65 +121,35 @@ const ANGLE = [
 ];
 
 /**
- * How many pieces the listing sells, and whether they differ from each other.
+ * How many pieces are in shot, said the way a photographer needs to hear it.
  *
- * Falls through the places the count actually lives. Returns `count: null` when none
- * of them answer — an unstated quantity is recoverable, a wrong one is not, so the
- * prompt stays silent rather than guessing.
+ * The counting itself lives in compose.js — the copy under the photograph has to
+ * agree with it, and when each side counted for itself they did not: the prompt
+ * asked for five garments while the description called the same listing a single
+ * piece.
+ *
+ * A null count means nothing on the path answered it. The prompt then says nothing
+ * about quantity, because an unstated one is recoverable and a wrong one is not.
  */
 export function packComposition(path, variant) {
-  const label = String(variant.label || variant.key || '');
-  const name = String(path.name || '');
-  const items = list(variant.itemsIncluded);
+  const { count, pieces, isSet, mixedPrints, mixedSizes, sizes } = packContents(path, variant);
 
-  // A set of DIFFERENT things, not several of one thing. The baby clothing set lists
-  // ["1 Cap","1 Top","1 Bib","1 Pyjama","1 Footed Pyjama"] — five garments, each
-  // quantity one. Reading the leading number off the first entry, as the single-entry
-  // case does, called a five-piece set "a single piece" in both the prompt and the
-  // copy. Several entries means show them all, and name them, because a buyer
-  // expecting five pieces and receiving one is a return.
-  if (items.length > 1) {
-    const parts = items.map((e) => String(e).replace(/^\s*\d+\s*/, '').trim()).filter(Boolean);
-    const total = items.reduce((n, e) => n + (Number(/^\s*(\d+)/.exec(String(e))?.[1]) || 1), 0);
-    const named = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts[0];
+  // A buyer expecting five pieces and receiving one is a return, so a set is named
+  // piece by piece rather than counted.
+  if (isSet) {
+    const named =
+      pieces.length > 1 ? `${pieces.slice(0, -1).join(', ')} and ${pieces.at(-1)}` : pieces[0];
     return {
-      count: total,
-      mixedPrints: false,
-      mixedSizes: false,
-      phrase: `Show all ${total} pieces of the set together and clearly — ${named}.`,
+      count,
+      mixedPrints,
+      mixedSizes,
+      phrase: `Show all ${count} pieces of the set together and clearly — ${named}.`,
     };
   }
 
-  let count = null;
-  // "4 Hand Towels", "2 Aasan" — the most common and the most explicit.
-  for (const entry of items) {
-    const m = /^\s*(\d+)\s+\S/.exec(String(entry));
-    if (m) {
-      count = Number(m[1]);
-      break;
-    }
-  }
-  if (!count && variant.packOf) count = Number(variant.packOf) || null;
-  if (!count && variant.numberOfBlankets) count = Number(variant.numberOfBlankets) || null;
-  // The organizers carry the pack size only on the variant, not in any shared field.
-  if (!count) {
-    const m = /pack of\s*(\d+)/i.exec(label) || /pack of\s*(\d+)/i.exec(name);
-    if (m) count = Number(m[1]);
-  }
-  if (!Number.isFinite(count) || count < 1) count = null;
-
-  // Two ways a multi-pack is not simply "N of the same thing". The variant label is
-  // searched too: "Pack of 3 — mixed colours" says it there and nowhere else, and
-  // "mixed" does not match a \bmix\b anchored on the right.
-  const haystack = `${path.packNote || ''} ${name} ${path.productType || ''} ${label}`;
-  const mixedPrints = /different|assorted|varies|\bmix(ed|\b)/i.test(haystack);
-  // "19x19 + 23x23 in" — a pack of two different sizes.
-  const sizes = `${name} ${label}`.match(/(\d+\s*[x×]\s*\d+)/gi) || [];
-  const mixedSizes = count > 1 && new Set(sizes.map((s) => s.replace(/\s/g, ''))).size > 1;
-
   let phrase = '';
   if (count > 1 && mixedSizes) {
-    phrase = `Show all ${count} pieces together, in their two different sizes (${[...new Set(sizes.map((s) => s.replace(/\s/g, '')))].join(' and ')}).`;
+    phrase = `Show all ${count} pieces together, in their two different sizes (${sizes.join(' and ')}).`;
   } else if (count > 1 && mixedPrints) {
     phrase = `Show all ${count} pieces together, each in a visibly DIFFERENT print — they are an assorted pack, not ${count} identical pieces.`;
   } else if (count > 1) {
@@ -281,11 +226,11 @@ export function buildImagePrompt(path, variant, index = 0) {
   // Three kinds of frame, in priority order: with a baby (on the families and at the
   // cadence the seller set), in use, or the product in a setting. A batch therefore
   // carries what it is, what it is for, and who it is for.
-  const kind = family(path, variant);
+  const kind = v.noun;
   const baby = WITH_BABY[kind];
   const withBaby = Boolean(baby) && index % baby.every === baby.every - 1;
 
-  const places = WHERE[kind] || v.where;
+  const places = v.where;
   const uses = IN_USE[kind] || [];
   const inUse = !withBaby && uses.length && index % 3 === 2;
 
@@ -295,7 +240,7 @@ export function buildImagePrompt(path, variant, index = 0) {
       ? uses[Math.floor(index / 3) % uses.length]
       : `${places[index % places.length]} setting`;
 
-  const colour = (list(variant.colorText)[0] || list(variant.colorRefiner)[0] || '').toString().toLowerCase();
+  const colour = colourWord(variant);
   const material = list(variant.material).join(' ').toLowerCase();
   const pattern = list(variant.pattern).join(', ').toLowerCase();
 

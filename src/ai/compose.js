@@ -47,6 +47,24 @@ const article = (word) => (/^[aeiou]/i.test(String(word).trim()) ? 'an' : 'a');
 const list = (a) => (Array.isArray(a) ? a.filter(Boolean) : [a].filter(Boolean));
 const pickAt = (arr, i) => arr[i % arr.length];
 
+/** "Cap, Top, Bib, Pyjama and Footed Pyjama" — a written list, not a comma dump. */
+const listWords = (a) =>
+  a.length > 1 ? `${a.slice(0, -1).join(', ')} and ${a[a.length - 1]}` : a[0] || '';
+
+/**
+ * The colour, from whichever field the path recorded it in.
+ *
+ * Flipkart asks for the colour three different ways and a path fills in whichever
+ * its vertical demanded, so reading only two of them loses it entirely on the rest.
+ * The appliance covers record `color` alone, which is how they ended up with a
+ * feature chip reading " Finish" and an image prompt that never said what colour the
+ * product was.
+ */
+export function colourWord(v) {
+  const found = list(v.colorText)[0] || list(v.colorRefiner)[0] || list(v.color)[0] || '';
+  return String(found).toLowerCase();
+}
+
 /** Rotate through an array so successive versions take different entries. */
 const rotate = (arr, start, n) =>
   Array.from({ length: Math.min(n, arr.length) }, (_, k) => arr[(start + k) % arr.length]);
@@ -147,6 +165,29 @@ export function vocabulary(path, v) {
       check: 'the waist size you want it to tie at',
     };
   }
+  // A fridge top cover is near enough to a table cover that the default was almost
+  // right, and almost right is the worst case: the copy called it a table cover,
+  // sized it "for a 4 seater" and suggested it for a dining table or a study desk.
+  // It sits on one appliance, in one room, and what a buyer has to check is whether
+  // it clears the width of their fridge.
+  if (leaf === 'Appliance Cover') {
+    return {
+      noun: 'fridge top cover',
+      nouns: ['fridge top cover', 'refrigerator top cover', 'fridge cover', 'appliance top cover'],
+      does: [
+        'keeps dust, grease and kitchen splashes off the top of the fridge',
+        'saves the fridge top from scratches and ring marks',
+        'holds small kitchen bits in its side pockets instead of on the counter',
+        'wipes clean and goes back on without shifting about',
+      ],
+      where: ['kitchen', 'modular kitchen', 'utility area', 'pantry corner', 'rented flat'],
+      detail: v.numberOfPockets
+        ? `${v.numberOfPockets} side pockets`
+        : list(v.pattern).join(' and ').toLowerCase() || 'quilted finish',
+      mount: '',
+      check: 'the width of your own fridge top',
+    };
+  }
   // A hooded baby towel is filed under the same Bath Towels vertical as an adult
   // towel, so the vertical cannot tell them apart — and the vertical here is a full
   // category path, which matches none of the bare leaf names below. Identify it by
@@ -209,6 +250,67 @@ export function vocabulary(path, v) {
   };
 }
 
+/**
+ * What is actually in the box: how many pieces, and whether they differ.
+ *
+ * One function because the copy and the image prompt were answering this
+ * differently and both were on the listing. The prompt said "show all 5 pieces of
+ * the set — Cap, Top, Bib, Pyjama and Footed Pyjama" while the description under it
+ * said "Supplied as a single piece", because this side read `packOf` alone and the
+ * clothing sets record packOf: "1" with five entries in itemsIncluded. A buyer
+ * reading one and counting the other has a return either way.
+ *
+ * `count: null` means nothing here answered it. The caller decides what to do with
+ * that — the prompt stays silent, the copy assumes one — because an unstated
+ * quantity is recoverable and a wrong one is not.
+ */
+export function packContents(path, v) {
+  const items = list(v.itemsIncluded).map((e) => String(e));
+  const label = String(v.label || v.key || '');
+  const name = String(path.name || '');
+
+  // A set of DIFFERENT things, not several of one thing. ["1 Cap","1 Top","1 Bib",
+  // "1 Pyjama","1 Footed Pyjama"] is five garments, each quantity one — reading the
+  // leading number off the first entry, as the single-entry case below does, is what
+  // called a five-piece set a single piece.
+  if (items.length > 1) {
+    const pieces = items.map((e) => e.replace(/^\s*\d+\s*/, '').trim()).filter(Boolean);
+    const count = items.reduce((n, e) => n + (Number(/^\s*(\d+)/.exec(e)?.[1]) || 1), 0);
+    return { count, pieces, isSet: true, mixedPrints: false, mixedSizes: false, sizes: [] };
+  }
+
+  // The count lives somewhere different on almost every vertical, so fall through
+  // the places it is actually recorded.
+  let count = null;
+  for (const entry of items) {
+    const m = /^\s*(\d+)\s+\S/.exec(entry); // "4 Hand Towels", "2 Aasan"
+    if (m) {
+      count = Number(m[1]);
+      break;
+    }
+  }
+  if (!count) count = Number(v.packOf) || null;
+  if (!count) count = Number(v.numberOfBlankets) || null;
+  if (!count) {
+    // The organizers carry the pack size only on the variant label.
+    const m = /pack of\s*(\d+)/i.exec(label) || /pack of\s*(\d+)/i.exec(name);
+    if (m) count = Number(m[1]);
+  }
+  if (!Number.isFinite(count) || count < 1) count = null;
+
+  // Two ways a multi-pack is not simply "N of the same thing". The label is searched
+  // too: "Pack of 3 — mixed colours" says it there and nowhere else.
+  const haystack = `${path.packNote || ''} ${name} ${path.productType || ''} ${label}`;
+  const mixedPrints = /different|assorted|varies|\bmix(ed|\b)/i.test(haystack);
+  // "19x19 + 23x23 in" — a pack of two different sizes.
+  const sizes = [
+    ...new Set((`${name} ${label}`.match(/(\d+\s*[x×]\s*\d+)/gi) || []).map((s) => s.replace(/\s/g, ''))),
+  ];
+  const mixedSizes = count > 1 && sizes.length > 1;
+
+  return { count, pieces: [], isSet: false, mixedPrints, mixedSizes, sizes };
+}
+
 /** Parts every sentence bank draws on. */
 function parts(path, v) {
   // `sizeLabel` lets a variant say its size the way buyers type it. Inches are right
@@ -216,16 +318,28 @@ function parts(path, v) {
   // phrase nobody searches, while the pack itself is sold as 34x52 cm. Opt-in, so
   // every existing path keeps the inch string it already composes.
   const size = v.sizeLabel || `${v.sizeInches.width}x${v.sizeInches.length} inch`;
-  const colour = list(v.colorText).length ? list(v.colorText)[0] : list(v.colorRefiner)[0] || '';
+  const colour = colourWord(v);
   const material = list(v.material).join(' ').toLowerCase() || '';
-  const pack = Number(v.packOf || 1);
+  const contents = packContents(path, v);
+  const pack = contents.count || 1;
   return {
     size,
-    colour: String(colour).toLowerCase(),
+    colour,
     material,
     pattern: list(v.pattern).join(', ').toLowerCase(),
     pack,
-    packPhrase: pack > 1 ? `pack of ${pack}` : 'single piece',
+    // A size that is not a measurement cannot be measured: these paths record
+    // "0-6 Months" where the rest record "40x60 inch".
+    sizeVerb: /\d\s*[x×]\s*\d/.test(size) ? 'measures' : 'comes in size',
+    pieces: contents.pieces,
+    isSet: contents.isSet,
+    // A five-piece set is not a pack of five: a pack is five of one thing, a set is
+    // five different things, and a buyer who reads "pack of 5" expects five outfits.
+    packPhrase: contents.isSet
+      ? `${pack}-piece set`
+      : pack > 1
+        ? `pack of ${pack}`
+        : 'single piece',
     seating: v.seatingCapacity || '',
     care: list(v.careInstructions),
     packNote: path.packNote || '',
@@ -273,7 +387,9 @@ function description(p, i) {
   const second = pickAt(vocab.does, i + 1);
 
   const openers = [
-    `This ${colour} ${material} ${vocab.noun} measures ${size} and ${does}.`,
+    // "measures 0-6 Months" is how a garment size reads when the sentence assumes
+    // every size is a measurement. The clothing sets are sold by age, not by inches.
+    `This ${colour} ${material} ${vocab.noun} ${p.sizeVerb} ${size} and ${does}.`,
     `Sized at ${size}, this ${colour} ${vocab.noun} ${does}.`,
     `A ${colour} ${vocab.noun} in ${material}, ${size}, made to be used rather than saved for guests.`,
     `Made from ${material} and finished in ${colour}, this ${size} ${vocab.noun} ${does}.`,
@@ -289,9 +405,11 @@ function description(p, i) {
   ];
 
   const practical = [
-    pack > 1
-      ? `Supplied as a ${p.packPhrase}, so a second one is ready when the first is in the wash.`
-      : `Supplied as a single piece.`,
+    p.isSet
+      ? `Supplied as a ${p.packPhrase} — ${listWords(p.pieces)}.`
+      : pack > 1
+        ? `Supplied as a ${p.packPhrase}, so a second one is ready when the first is in the wash.`
+        : `Supplied as a single piece.`,
     `Weighs about ${p.weightGrams || '150'} g, so it handles and stores easily.`,
     `The ${size} size is the one to check against ${vocab.check || 'your own'} before ordering.`,
     `Colour may vary slightly between screens and daylight.`,
@@ -334,7 +452,12 @@ function keywords(path, p, i) {
   if (p.pattern) {
     for (const n of vocab.nouns) generated.push(`${p.pattern} ${n}`, `${colour} ${p.pattern} ${n}`);
   }
-  if (p.pack > 1) generated.push(`${vocab.noun} pack of ${p.pack}`, `${p.pack} piece ${vocab.noun}`);
+  if (p.pack > 1) {
+    generated.push(`${p.pack} piece ${vocab.noun}`);
+    // "baby clothing set pack of 5" is a phrase nobody types and a claim nobody
+    // means; a set is searched for by its piece count.
+    generated.push(p.isSet ? `${p.pack} piece set ${vocab.noun}` : `${vocab.noun} pack of ${p.pack}`);
+  }
   // Buyers type the size both ways, and search on the job as well as the object.
   const spaced = size.replace('x', ' x ');
   for (const n of vocab.nouns) generated.push(`${spaced} ${n}`, `${n} online`, `${n} for home use`);
@@ -388,7 +511,7 @@ function features(p, i) {
     // First pattern only. The joined string makes chips like "Floral, Self Design
     // Design", which reads as a data error on a live listing.
     p.pattern ? `${cap(p.pattern.split(',')[0].trim())} Design` : `${cap(vocab.detail)}`,
-    pack > 1 ? `Pack Of ${pack}` : 'Single Piece',
+    p.isSet ? `${pack} Piece Set` : pack > 1 ? `Pack Of ${pack}` : 'Single Piece',
     vocab.mount ? `${cap(vocab.mount)} Mounting` : 'Ready To Use',
     // Was hardcoded "Hand Wash Gentle", which is wrong on anything that is machine
     // washable and wrong on a PVC sheet that is only ever wiped. The path already
