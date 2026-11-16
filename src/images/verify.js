@@ -22,14 +22,31 @@ import fs from 'fs/promises';
 
 const MODEL = () => process.env.IMAGE_VERIFY_MODEL || 'gpt-6-luna';
 
-const ASK = [
-  "Image 1 is the seller's real product photograph. Image 2 is a generated listing photo.",
-  'Decide whether image 2 shows THE SAME product as image 1 — same item type, same colour,',
-  'same pattern, same applied details such as embroidery, trim or border.',
-  'The background, setting, framing and how the item is folded or arranged are EXPECTED to',
-  'differ; none of those is a mismatch. Judge the product only.',
-  'Reply as JSON only: {"same": true|false, "confidence": 0-1, "differences": "<short phrase>"}',
-].join(' ');
+/**
+ * The ask names how many real photographs it is being shown, and it is shown ALL of
+ * them rather than just the first.
+ *
+ * The first measured false rejection came from a comparison the model could not win:
+ * the reference slot the seller had picked was a macro of the quilting, the generated
+ * image was a whole apron on a hook, and it reported 98% confidence that these were
+ * different products. They were the same product at two magnifications. The generator
+ * is given every view; the check has to see the same thing, or it is grading against
+ * a different question.
+ */
+const ask = (n) =>
+  [
+    n === 1
+      ? "Image 1 is the seller's real product photograph."
+      : `Images 1 to ${n} are the seller's real photographs of ONE product, taken from different ` +
+        'distances and angles — some may be close-ups of the fabric or of one part of it.',
+    'The final image is a generated listing photo.',
+    'Decide whether the final image shows THE SAME product — same item type, same colour,',
+    'same pattern, same applied details such as embroidery, trim or border.',
+    'The background, setting, framing, magnification and how the item is folded, hung or',
+    'arranged are EXPECTED to differ; none of those is a mismatch, and neither is detail that',
+    'is simply too small to see at listing size. Judge the product only.',
+    'Reply as JSON only: {"same": true|false, "confidence": 0-1, "differences": "<short phrase>"}',
+  ].join(' ');
 
 const dataUrl = async (file) => `data:image/png;base64,${(await fs.readFile(file)).toString('base64')}`;
 
@@ -38,9 +55,13 @@ const dataUrl = async (file) => `data:image/png;base64,${(await fs.readFile(file
  * show as unverified rather than treating as a pass. A guardrail that silently
  * reports success when it did not run is worse than none.
  */
-export async function verifyProduct({ reference, candidate, log = () => {} }) {
+export async function verifyProduct({ references, reference, candidate, log = () => {} }) {
   const key = process.env.OPENAI_API_KEY;
   if (!key || /^your_.*_here$/.test(key)) return null;
+
+  // `reference` stays accepted so older callers keep working.
+  const real = (references?.length ? references : [reference]).filter(Boolean);
+  if (!real.length) return null;
 
   try {
     const body = {
@@ -49,10 +70,15 @@ export async function verifyProduct({ reference, candidate, log = () => {} }) {
         {
           role: 'user',
           content: [
-            { type: 'text', text: ASK },
-            // `detail: low` keeps this at a few hundred tokens; the question is about
-            // the product's identity, not its stitching.
-            { type: 'image_url', image_url: { url: await dataUrl(reference), detail: 'low' } },
+            { type: 'text', text: ask(real.length) },
+            // `detail: low` keeps each image at a few hundred tokens; the question is
+            // about the product's identity, not its stitching.
+            ...(await Promise.all(
+              real.map(async (f) => ({
+                type: 'image_url',
+                image_url: { url: await dataUrl(f), detail: 'low' },
+              })),
+            )),
             { type: 'image_url', image_url: { url: await dataUrl(candidate), detail: 'low' } },
           ],
         },
