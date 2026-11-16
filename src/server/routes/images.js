@@ -217,8 +217,28 @@ router.get('/file/:sku/:name', async (req, res) => {
   await sendImage(req, res, path.join(GENERATED, sku), req.params.name);
 });
 
-// The flat form, for images generated before they were filed by SKU.
-router.get('/file/:name', (req, res) => sendImage(req, res, RUN_UPLOADS, req.params.name));
+/**
+ * The flat form: uploaded Front Views, and images generated before they were filed
+ * by SKU.
+ *
+ * It also answers for a library image, because the generated name carries its own
+ * folder — `TC_HN_BGF_20261117-030625-ra5.png` belongs to TC_HN_BGF. Without that, a
+ * page still open from before this shipped asks for every thumbnail at this URL and
+ * gets five broken images back, which looks like the generation failed when the
+ * files are sitting on disk. A stale tab is a reload away; a review grid that lies
+ * about what it produced is worse than the staleness.
+ */
+const LIBRARY_NAME = /^(.+)_\d{8}-\d{6}-[a-z0-9]{3}\.(?:png|jpe?g|webp)$/i;
+
+router.get('/file/:name', async (req, res) => {
+  const name = path.basename(String(req.params.name || ''));
+  if (await fs.stat(path.resolve(RUN_UPLOADS, name)).catch(() => null)) {
+    return sendImage(req, res, RUN_UPLOADS, name);
+  }
+  const sku = safeSku(LIBRARY_NAME.exec(name)?.[1]);
+  if (sku) return sendImage(req, res, path.join(GENERATED, sku), name);
+  return sendImage(req, res, RUN_UPLOADS, name); // 404s with the same shape as before
+});
 
 // ─── GET /api/images/library/:sku — what has already been made for this SKU ───
 /**
