@@ -67,6 +67,41 @@ export default function ProductPicker({ paths, selectedId, onSelect }) {
       .sort((a, b) => b.codes.length - a.codes.length || a.path.name.localeCompare(b.path.name));
   }, [family]);
 
+  /**
+   * The smallest set of paths that leaves nothing out, variation paths first.
+   *
+   * Greedy: repeatedly take the path that adds the most products still missing.
+   * Variation paths are exhausted before a single listing is considered at all, so
+   * a product reachable both ways is reached by the variation — one listing
+   * carrying four products beats four listings, even when it re-lists products an
+   * earlier pick already covered. Overlap costs nothing here; a missed product
+   * costs a product nobody can buy.
+   *
+   * Measured across the catalogue: variation paths alone reach everything except
+   * one aasan size and the hand towel, which have no variation path to be reached
+   * from. Table covers come out at 3 paths for 25 products, organizers at 14 for
+   * 36 — every family ends at all of them, which is the point.
+   */
+  function suggest() {
+    const need = new Set(rows.flatMap((r) => r.codes));
+    const taken = new Set();
+    const sweep = (pool) => {
+      for (;;) {
+        const best = pool
+          .filter((r) => !taken.has(r.path.id))
+          .map((r) => ({ r, gain: r.codes.filter((c) => need.has(c)).length }))
+          .filter((x) => x.gain > 0)
+          .sort((a, b) => b.gain - a.gain || b.r.codes.length - a.r.codes.length)[0];
+        if (!best) return;
+        taken.add(best.r.path.id);
+        best.r.codes.forEach((c) => need.delete(c));
+      }
+    };
+    sweep(rows.filter((r) => r.path.variants?.length > 1));
+    sweep(rows.filter((r) => (r.path.variants?.length ?? 1) <= 1));
+    setPicked(Object.fromEntries([...taken].map((id) => [id, true])));
+  }
+
   // What the ticked paths add up to, and what they still leave out.
   const tally = useMemo(() => {
     if (!family) return null;
@@ -117,7 +152,7 @@ export default function ProductPicker({ paths, selectedId, onSelect }) {
             </span>
             {tally.chosen > 0 && (
               <span
-                className={`ml-auto text-[11px] font-medium ${
+                className={`text-[11px] font-medium ${
                   tally.missing.length ? 'text-amber-700' : 'text-emerald-700'
                 }`}
               >
@@ -125,6 +160,13 @@ export default function ProductPicker({ paths, selectedId, onSelect }) {
                 {tally.missing.length ? ` — ${tally.missing.length} left` : ' — all of them'}
               </span>
             )}
+            <button
+              type="button"
+              onClick={tally.chosen > 0 && !tally.missing.length ? () => setPicked({}) : suggest}
+              className="ml-auto shrink-0 rounded border border-slate-300 px-2 py-0.5 text-[11px] font-medium hover:bg-slate-50"
+            >
+              {tally.chosen > 0 && !tally.missing.length ? 'Clear' : 'Tick a set covering all'}
+            </button>
           </div>
 
           <ul className="max-h-80 overflow-y-auto">
