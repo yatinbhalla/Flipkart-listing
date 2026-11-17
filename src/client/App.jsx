@@ -6,6 +6,7 @@ import RunPanel from './components/RunPanel.jsx';
 import CopyPanel from './components/CopyPanel.jsx';
 import SavedImagesBadge from './components/SavedImagesBadge.jsx';
 import PathPicker from './components/PathPicker.jsx';
+import ProductPicker from './components/ProductPicker.jsx';
 
 export default function App() {
   const { lines, events, clear } = useWebSocket();
@@ -102,6 +103,11 @@ export default function App() {
           carrying several variants. Searching stays inside the row you type in. */}
       {paths.length > 1 && (
         <div className="mb-4">
+          {/* Before "which path", the question is "what am I listing today". This row
+              answers that: pick a product and every path that makes it up is there,
+              largest first, with the arithmetic that says whether they add up to all
+              of it. */}
+          <ProductPicker paths={paths} selectedId={selectedId} onSelect={setSelectedId} />
           {singlePaths.length > 0 && (
             <PathPicker
               label="Single product"

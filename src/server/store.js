@@ -1,5 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { vocabulary } from '../ai/compose.js';
 
 const DATA = path.resolve('data');
 const PATHS_DIR = path.join(DATA, 'paths');
@@ -21,6 +22,25 @@ async function readJson(file, fallback) {
 
 // ─── Paths ─────────────────────────────────────────────────────────────────────
 
+/**
+ * What the path actually sells, as a buyer would name it: "table cover", "wall
+ * hanging organizer", "apron".
+ *
+ * Taken from vocabulary(), which already distinguishes the families the vertical
+ * cannot — an aasan from a door mat, a hooded baby towel from an adult one — rather
+ * than from the vertical string, where a net table cover and a PVC one read the same
+ * and a fridge cover reads as neither. One shelf of a shop, which is how the seller
+ * works through the catalogue: everything that is a table cover, then everything
+ * that is an organizer.
+ */
+function productTypeOf(config) {
+  try {
+    return vocabulary(config, resolveVariant(config, config.variants[0])).noun;
+  } catch {
+    return '';
+  }
+}
+
 export async function listPaths() {
   await fs.mkdir(PATHS_DIR, { recursive: true });
   const entries = await fs.readdir(PATHS_DIR, { withFileTypes: true });
@@ -33,6 +53,7 @@ export async function listPaths() {
     config._sharedImagesReady = await sharedImagesReady(entry.name);
     config._sharedImageSlots = await sharedImageSlots(entry.name);
     config._variantImages = await variantImageCounts(entry.name);
+    config._productType = productTypeOf(config);
     out.push(config);
   }
   return out;
@@ -82,6 +103,7 @@ export async function getPath(id) {
   config._sharedImagesReady = await sharedImagesReady(id);
   config._sharedImageSlots = await sharedImageSlots(id);
   config._variantImages = await variantImageCounts(id);
+  config._productType = productTypeOf(config);
   return config;
 }
 
@@ -92,6 +114,7 @@ export async function savePath(id, config) {
   delete clean._sharedImagesReady;
   delete clean._sharedImageSlots;
   delete clean._variantImages;
+  delete clean._productType;
   clean.updatedAt = new Date().toISOString();
   if (!clean.createdAt) clean.createdAt = clean.updatedAt;
   await fs.writeFile(path.join(pathDir(id), 'config.json'), JSON.stringify(clean, null, 2), 'utf8');
